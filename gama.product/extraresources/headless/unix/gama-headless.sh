@@ -30,6 +30,7 @@ fi
 memory="0"
 userWorkspace=""
 args=""
+args_array=()
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -42,10 +43,15 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         *)
-            args+="$1 "
+            args_array+=("$1")
             shift
             ;;
     esac
+done
+
+# Build string for keyword checks (backward compatible)
+for arg in "${args_array[@]}"; do
+    args+="$arg "
 done
 
 if [[ $memory == "0" ]]; then
@@ -122,7 +128,7 @@ if ! $java -cp "${pluginPath}"/org.eclipse.equinox.launcher*.jar \
         -configuration "${headlessPath}"/configuration \
         -application gama.headless.product \
         -data "$pathWorkspace" \
-        $args; then
+        "${args_array[@]}"; then
     if [ $workspaceCreate -eq 1 ]; then
         # create workspace in output folder
         echo "GAMA encountered an error and crashed, please check again your command..."

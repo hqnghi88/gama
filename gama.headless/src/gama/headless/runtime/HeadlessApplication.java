@@ -69,6 +69,7 @@ import gama.core.CoreActivator;
 import gama.workspace.WorkspaceActivator;
 import gaml.compiler.GamlStandaloneSetup;
 import gaml.compiler.validation.GamlModelBuilder;
+import gaml.compiler.validation.GamlTextValidator;
 
 /**
  * The Class Application.
@@ -169,6 +170,9 @@ public class HeadlessApplication implements IApplication {
 	/** The Constant VALIDATE_LIBRARY_PARAMETER. */
 	final public static String VALIDATE_LIBRARY_PARAMETER = "-validate";
 
+	/** The Constant VALIDATE_TEXT_PARAMETER. */
+	final public static String VALIDATE_TEXT_PARAMETER = "-validate-text";
+
 	/** The Constant TEST_LIBRARY_PARAMETER. */
 	final public static String TEST_LIBRARY_PARAMETER = "-test";
 
@@ -244,6 +248,8 @@ public class HeadlessApplication implements IApplication {
 				+ GAMA_VERSION + "                      -- get the the version of gama" + "\n\t=== Library Runner ==="
 				+ "\n\t\t" + VALIDATE_LIBRARY_PARAMETER
 				+ "                     -- invokes GAMA to validate models present in built-in library and plugins"
+				+ "\n\t\t" + VALIDATE_TEXT_PARAMETER + " [modelContent]"
+				+ "\n\t\t                              -- validates a GAML model provided as a string"
 				+ "\n\t\t" + TEST_LIBRARY_PARAMETER
 				+ "                         -- invokes GAMA to execute the tests present in built-in library and plugins and display their results"
 				+ "\n\t=== GAMA Headless Runner ===" + "\n\t\t" + SOCKET_PARAMETER
@@ -320,6 +326,10 @@ public class HeadlessApplication implements IApplication {
 		if (args.contains(WRITE_XMI) || args.contains(GAMA_VERSION) || args.contains(HELP_PARAMETER)
 				|| args.contains(VALIDATE_LIBRARY_PARAMETER) || args.contains(TEST_LIBRARY_PARAMETER)) {
 			size = size - 1;
+			mustContainOutFolder = mustContainInFile = false;
+		}
+		if (args.contains(VALIDATE_TEXT_PARAMETER)) {
+			size = size - 2;
 			mustContainOutFolder = mustContainInFile = false;
 		}
 		if (args.contains(BATCH_PARAMETER)) {
@@ -423,6 +433,7 @@ public class HeadlessApplication implements IApplication {
 
 		// Debug runner
 		boolean noDelay = args.contains(NO_DELAY_PARAMETER);
+		if (args.contains(VALIDATE_TEXT_PARAMETER)) return validateText(args);
 		if (args.contains(VALIDATE_LIBRARY_PARAMETER)) return ModelLibraryValidator.getInstance().start();
 		if (args.contains(TEST_LIBRARY_PARAMETER)) return ModelLibraryTester.getInstance().start();
 		if (args.contains(RUN_LIBRARY_PARAMETER)) return ModelLibraryRunner.getInstance().start();
@@ -446,6 +457,41 @@ public class HeadlessApplication implements IApplication {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Validate text.
+	 *
+	 * @param args
+	 *            the args
+	 * @return the integer
+	 */
+	private Integer validateText(final List<String> args) {
+		final String content = after(args, VALIDATE_TEXT_PARAMETER);
+		if (content == null || content.isBlank()) {
+			DEBUG.ERR("No model content provided with " + VALIDATE_TEXT_PARAMETER + " parameter.");
+			return 1;
+		}
+
+		final List<GamlCompilationError> errors = new ArrayList<>();
+		GamlTextValidator.getInstance().validateModel(content, errors, false);
+
+		if (errors.isEmpty()) {
+			DEBUG.LOG("The model content is valid.");
+			return 0;
+		}
+
+		final int[] errorCount = { 0 };
+		errors.stream().filter(GamlCompilationError::isError).forEach(e -> {
+			DEBUG.ERR("Error in model: " + e.toString());
+			errorCount[0]++;
+		});
+
+		final long warningCount = errors.stream().filter(e -> !e.isError()).count();
+		if (warningCount > 0) { DEBUG.LOG(warningCount + " warning(s) found."); }
+
+		DEBUG.LOG("Validation complete: " + errorCount[0] + " error(s), " + warningCount + " warning(s).");
+		return errorCount[0];
 	}
 
 	/**
