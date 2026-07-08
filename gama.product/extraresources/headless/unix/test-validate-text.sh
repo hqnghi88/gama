@@ -52,7 +52,7 @@ run_test "standalone" "The model content is valid" \
 
 echo ""
 echo "=== Test 2: Invalid syntax ==="
-run_test "syntax" "Error in model" \
+run_test "syntax" "Error in" \
   -validate-text 'not valid gaml syntax'
 
 echo ""
@@ -62,13 +62,13 @@ run_test "empty" "No model content" \
 
 echo ""
 echo "=== Test 4: Two models (Main imports Base) ==="
-run_test "import" "The model content is valid" \
+run_test "import" "All 2 model" \
   -validate-text 'model Base global { init { write "base"; } }' \
   'model Main import "Base.gaml" global { init { write "main"; } }'
 
 echo ""
 echo "=== Test 5: Three models (C imports B, B imports A) ==="
-run_test "chain" "The model content is valid" \
+run_test "chain" "All 3 model" \
   -validate-text 'model A global { init { write "a"; } }' \
   'model B import "A.gaml" global { init { write "b"; } }' \
   'model C import "B.gaml" global { init { write "c"; } }'
@@ -80,27 +80,35 @@ run_test "missing-import" "Impossible to locate" \
 
 echo ""
 echo "=== Test 7: Subfolder import with explicit path ==="
-run_test "subfolder" "The model content is valid" \
+run_test "subfolder" "All 2 model" \
   -validate-text 'sub/Base.gaml|model Base global {}' \
   'model Main import "sub/Base.gaml" global { init { write "main"; } }'
 
 echo ""
 echo "=== Test 8: Deep nesting (a/b/c) ==="
-run_test "deep-nesting" "The model content is valid" \
+run_test "deep-nesting" "All 2 model" \
   -validate-text 'a/b/c/Deep.gaml|model Deep global {}' \
   'model Main import "a/b/c/Deep.gaml" global { init { write "main"; } }'
 
 echo ""
 echo "=== Test 9: Parent directory traversal (../../) ==="
-run_test "parent-dir" "The model content is valid" \
+run_test "parent-dir" "All 2 model" \
   -validate-text 'a/lib/Base.gaml|model Base global {}' \
   'a/b/c/Child.gaml|model Child import "../../lib/Base.gaml" global { init { write "child"; } }'
 
 echo ""
 echo "=== Test 10: Mixed style (path|content + name-extracted) ==="
-run_test "mixed-style" "The model content is valid" \
+run_test "mixed-style" "All 2 model" \
   -validate-text 'lib/Base.gaml|model Base global {}' \
   'model Main import "lib/Base.gaml" global { init { write "main"; } }'
+
+echo ""
+echo "=== Test 11: Batch validation — 4 independent models in one invocation ==="
+run_test "batch" "All 4 model" \
+  -validate-text 'model A global {}' \
+  'model B global {}' \
+  'model C global {}' \
+  'model D global {}'
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

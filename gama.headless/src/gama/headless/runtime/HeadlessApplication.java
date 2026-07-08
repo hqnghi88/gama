@@ -518,34 +518,44 @@ public class HeadlessApplication implements IApplication {
 				DEBUG.ERR("No model content provided with " + VALIDATE_TEXT_PARAMETER + " parameter.");
 				return 1;
 			}
-			final Path mainFile = tempFiles.get(tempFiles.size() - 1);
 			final Injector injector = getInjector();
-			final GamlModelBuilder builder = new GamlModelBuilder(injector);
-			final List<GamlCompilationError> errors = new ArrayList<>();
-			try {
-				builder.compile(URI.createFileURI(mainFile.toAbsolutePath().toString()), errors);
-			} catch (RuntimeException e) {
-				final String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-				DEBUG.ERR("Error in model: " + msg);
-				return 1;
+			int totalErrors = 0;
+			int validatedCount = 0;
+			for (Path f : tempFiles) {
+				String fileName = f.getFileName().toString();
+				validatedCount++;
+				final GamlModelBuilder builder = new GamlModelBuilder(injector);
+				final List<GamlCompilationError> errors = new ArrayList<>();
+				try {
+					builder.compile(URI.createFileURI(f.toAbsolutePath().toString()), errors);
+				} catch (RuntimeException e) {
+					final String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+					DEBUG.ERR("Error in " + fileName + ": " + msg);
+					totalErrors++;
+					continue;
+				}
+				long errCount = errors.stream().filter(GamlCompilationError::isError).peek(e -> {
+					DEBUG.ERR("Error in " + fileName + ": " + e.toString());
+				}).count();
+				totalErrors += errCount;
+				long warnCount = errors.stream().filter(e -> !e.isError()).count();
+				if (warnCount > 0) {
+					DEBUG.LOG(warnCount + " warning(s) in " + fileName);
+				}
+				if (errCount == 0) {
+					DEBUG.LOG("Model '" + fileName + "' is valid.");
+				}
 			}
-
-			if (errors.isEmpty()) {
+			if (totalErrors > 0) {
+				DEBUG.LOG("Validation complete: " + totalErrors + " error(s) across " + validatedCount + " model(s).");
+				return totalErrors;
+			}
+			if (validatedCount == 1) {
 				DEBUG.LOG("The model content is valid.");
-				return 0;
+			} else {
+				DEBUG.LOG("All " + validatedCount + " model(s) are valid.");
 			}
-
-			final int[] errorCount = { 0 };
-			errors.stream().filter(GamlCompilationError::isError).forEach(e -> {
-				DEBUG.ERR("Error in model: " + e.toString());
-				errorCount[0]++;
-			});
-
-			final long warningCount = errors.stream().filter(e -> !e.isError()).count();
-			if (warningCount > 0) { DEBUG.LOG(warningCount + " warning(s) found."); }
-
-			DEBUG.LOG("Validation complete: " + errorCount[0] + " error(s), " + warningCount + " warning(s).");
-			return errorCount[0];
+			return 0;
 		} finally {
 			try {
 				Files.walk(tempDir).sorted(Comparator.reverseOrder())
