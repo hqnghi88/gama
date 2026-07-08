@@ -145,7 +145,8 @@ public class GamlLinkingService extends DefaultLinkingService {
 		// Check if this is a known symbol type that should be added to stubs
 		if (GamlPackage.eINSTANCE.getTypeDefinition().isSuperTypeOf(eclass)
 				|| GamlPackage.eINSTANCE.getActionDefinition().isSuperTypeOf(eclass)
-				|| GamlPackage.eINSTANCE.getVarDefinition().isSuperTypeOf(eclass))
+				|| GamlPackage.eINSTANCE.getVarDefinition().isSuperTypeOf(eclass)
+				|| GamlPackage.eINSTANCE.getUnitFakeDefinition().isSuperTypeOf(eclass))
 			return addSymbol(name, eclass);
 
 		// Check for local variables in the execution context

@@ -51,14 +51,16 @@ public class GamlResourceIndexer {
 
 	static {
 		DEBUG.OFF();
-		final IWorkspace workspace = GAMA.getWorkspaceManager().getWorkspace();
-		workspace.addResourceChangeListener(event -> {
-			if (event.getBuildKind() == IncrementalProjectBuilder.CLEAN_BUILD) { eraseIndex(); }
-		}, IResourceChangeEvent.PRE_BUILD);
+		if (GAMA.getWorkspaceManager() != null && GAMA.getWorkspaceManager().getWorkspace() != null) {
+			final IWorkspace workspace = GAMA.getWorkspaceManager().getWorkspace();
+			workspace.addResourceChangeListener(event -> {
+				if (event.getBuildKind() == IncrementalProjectBuilder.CLEAN_BUILD) { eraseIndex(); }
+			}, IResourceChangeEvent.PRE_BUILD);
+		}
 	}
 
 	/** The Constant EMPTY_MAP. */
-	protected final static IMap EMPTY_MAP = GamaMapFactory.create();
+	protected final static Map<URI, String> EMPTY_MAP = java.util.Collections.emptyMap();
 
 	/** The Constant IMPORTED_URIS. */
 	public static final Object IMPORTED_URIS = "ImportedURIs";
@@ -77,7 +79,7 @@ public class GamlResourceIndexer {
 		if (m instanceof ModelImpl model && model.eIsSet(GamlPackage.MODEL__IMPORTS)) {
 			List<Import> imports = model.getImports();
 			if (imports.isEmpty()) return result;
-			result = GamaMapFactory.createOrdered();
+			result = new java.util.LinkedHashMap<>();
 			for (final Import e : imports) {
 				final String u = e.getImportURI();
 				if (u != null) {

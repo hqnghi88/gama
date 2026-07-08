@@ -451,7 +451,7 @@ public class ModelFactory implements IModelFactory {
 		}
 		final IModelDescription model = new ModelDescription(modelName, null, projectPath, modelPath,
 				source.getElement(), null, parent, null, globalFacets, collector, documentationContext,
-				absoluteAlternatePathAsStrings, parent.getAgentConstructor());
+				absoluteAlternatePathAsStrings, parent == null ? null : parent.getAgentConstructor());
 		final Collection<String> allModelNames = Iterables.size(models) == 1 ? null : ImmutableSet
 				.copyOf(Iterables.transform(Iterables.skip(models, 1), each -> buildModelName(each.getName())));
 		model.setImportedModelNames(allModelNames);
@@ -760,6 +760,7 @@ public class ModelFactory implements IModelFactory {
 			final Map<String, ITypeDescription> cache) {
 		// Create the experiment description
 		final IDescription desc = GAML.getDescriptionFactory().create(experiment, model, Collections.emptyList());
+		if (desc == null) return;
 		final IExperimentDescription eDesc = (IExperimentDescription) desc;
 		cache.put(eDesc.getName(), eDesc);
 		desc.resetOriginName();
@@ -836,6 +837,7 @@ public class ModelFactory implements IModelFactory {
 		// explicitly an empty list and not null;
 		final ISpeciesDescription mDesc =
 				(ISpeciesDescription) GAML.getDescriptionFactory().create(micro, macro, Collections.emptyList());
+		if (mDesc == null) return;
 		cache.put(mDesc.getName(), mDesc);
 		// Add it to its macro-species
 		macro.addChild(mDesc);

@@ -350,6 +350,12 @@ public abstract class SymbolDescription extends DescriptionStateManager {
 	 */
 	final SymbolArtefact artefact;
 
+	/** Fallback artefact used when the registry has no entry for a keyword (e.g. in lite mode). */
+	private static final SymbolArtefact FALLBACK_ARTEFACT = new SymbolArtefact(
+			IDescription.class, false, false, false, false, ISymbolKind.REGULAR, true,
+			new IArtefact.Facet[0], null, new String[0], new int[0],
+			false, false, false, null, "fallback", "gaml.compiler");
+
 	/**
 	 * Creates a new symbol description.
 	 *
@@ -380,7 +386,8 @@ public abstract class SymbolDescription extends DescriptionStateManager {
 			facets.remove(ORIGIN);
 		} else if (superDesc != null) { originName = superDesc.getName(); }
 		setEnclosingDescription(superDesc);
-		artefact = (SymbolArtefact) ArtefactRegistry.getArtefact(getKeyword(), getTypeContext());
+		SymbolArtefact a = (SymbolArtefact) ArtefactRegistry.getArtefact(getKeyword(), getTypeContext());
+		artefact = a != null ? a : FALLBACK_ARTEFACT;
 
 	}
 
@@ -634,7 +641,7 @@ public abstract class SymbolDescription extends DescriptionStateManager {
 	 * @return the symbol kind as defined in its prototype
 	 */
 	@Override
-	public ISymbolKind getKind() { return getArtefact().getKind(); }
+	public ISymbolKind getKind() { return getArtefact() == null ? ISymbolKind.REGULAR : getArtefact().getKind(); }
 
 	/**
 	 * Compiles all facets that can provide type information. This ensures type provider facets are compiled before they
@@ -697,7 +704,7 @@ public abstract class SymbolDescription extends DescriptionStateManager {
 	@Override
 	public void setName(final String name) {
 		this.name = name;
-		if (getArtefact().getPossibleFacets().containsKey(IKeyword.NAME)) {
+		if (getArtefact() != null && getArtefact().getPossibleFacets().containsKey(IKeyword.NAME)) {
 			setFacetExprDescription(IKeyword.NAME, GAML.getExpressionDescriptionFactory().createLabel(name));
 		}
 	}
@@ -1270,6 +1277,9 @@ public abstract class SymbolDescription extends DescriptionStateManager {
 
 		return visitFacets((facet, expr) -> {
 			final IArtefact.Facet fp = artefact.getFacet(facet);
+			if (fp == null && "model".equals(getKeyword())) {
+				System.out.println("[DBG] validateFacets: keyword=model, facet=" + facet + " artifact=" + System.identityHashCode(artefact) + " possibleFacets=" + artefact.getPossibleFacets());
+			}
 			if (fp == null) return processUnknowFacet(isDo, facet);
 			if (fp.getDeprecated() != null) {
 				warning("Facet '" + facet + "' is deprecated: " + fp.getDeprecated(), IGamlIssue.DEPRECATED, facet);

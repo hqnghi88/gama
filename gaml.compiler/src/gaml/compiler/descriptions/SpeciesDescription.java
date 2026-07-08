@@ -459,10 +459,7 @@ public class SpeciesDescription extends TypeDescription implements ISpeciesDescr
 	@Override
 	public void copyJavaAdditions() {
 		final Class clazz = getJavaBase();
-		if (clazz == null) {
-			error("This species cannot be compiled as its Java base is unknown. ", IGamlIssue.UNKNOWN_SPECIES);
-			return;
-		}
+		if (clazz == null) { return; }
 		Iterable<Class<? extends ISkill>> skillClasses = transform(getSkills(), TO_CLASS);
 		final List<Class> classes =
 				JavaUtils.collectImplementationClasses(getJavaBase(), skillClasses, GAML.getAdditionClasses());
