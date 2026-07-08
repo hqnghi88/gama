@@ -1,5 +1,6 @@
 #!/bin/bash
 # Test script for -validate-text feature of GAMA headless
+# Tests single model validation and multi-model validation with imports.
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ECLIPSE_DIR="$SCRIPT_DIR/../Eclipse"
 PLUGIN_DIR="$ECLIPSE_DIR/plugins"
@@ -7,7 +8,6 @@ CONFIG_DIR="$ECLIPSE_DIR/configuration"
 LAUNCHER_JAR=$(ls "$PLUGIN_DIR"/org.eclipse.equinox.launcher_*.jar 2>/dev/null | head -1)
 
 if [ -z "$LAUNCHER_JAR" ]; then
-  # Try the built product location
   PRODUCT_BASE="/Users/hqnghi/git/hgama/gama/gama.product/target/products/gama.headless.product/macosx/cocoa/aarch64/Eclipse.app/Contents/Eclipse"
   LAUNCHER_JAR=$(ls "$PRODUCT_BASE/plugins/org.eclipse.equinox.launcher_"*.jar 2>/dev/null | head -1)
   CONFIG_DIR="$PRODUCT_BASE/configuration"
@@ -18,61 +18,90 @@ if [ -z "$LAUNCHER_JAR" ]; then
   exit 1
 fi
 
-echo "=== Test 1: Valid GAML model ==="
-java -cp "$LAUNCHER_JAR" \
-  -Xms512m -Xmx2g \
-  --add-exports java.base/java.lang=ALL-UNNAMED \
-  --add-opens java.base/java.lang=ALL-UNNAMED \
-  --enable-preview \
-  org.eclipse.equinox.launcher.Main \
-  -configuration "$CONFIG_DIR" \
-  -application gama.headless.product \
-  -data "/tmp/gama-test-valid-$$" \
-  -validate-text 'model test global { init { write "hello"; } }' 2>&1 | grep -E "(valid|Error|error)"
+BASE_ARGS=(-cp "$LAUNCHER_JAR" -Xms512m -Xmx2g
+  --add-exports java.base/java.lang=ALL-UNNAMED
+  --add-opens java.base/java.lang=ALL-UNNAMED
+  --enable-preview
+  org.eclipse.equinox.launcher.Main
+  -configuration "$CONFIG_DIR"
+  -application gama.headless.product)
 
-if [ $? -eq 0 ]; then
-  echo "PASS: Valid model accepted (exit code 0)"
-else
-  echo "FAIL: Valid model produced unexpected result"
-fi
+PASS=0
+FAIL=0
 
-echo ""
-echo "=== Test 2: Invalid GAML model ==="
-java -cp "$LAUNCHER_JAR" \
-  -Xms512m -Xmx2g \
-  --add-exports java.base/java.lang=ALL-UNNAMED \
-  --add-opens java.base/java.lang=ALL-UNNAMED \
-  --enable-preview \
-  org.eclipse.equinox.launcher.Main \
-  -configuration "$CONFIG_DIR" \
-  -application gama.headless.product \
-  -data "/tmp/gama-test-invalid-$$" \
-  -validate-text 'not valid gaml at all' 2>&1 | grep -E "(valid|Error|error)"
+run_test() {
+  local name="$1" expected="$2"
+  shift 2
+  local ws="/tmp/gama-test-$$-$RANDOM"
+  local output
+  output=$(java "${BASE_ARGS[@]}" -data "$ws" "$@" 2>&1)
+  rm -rf "$ws"
+  if echo "$output" | grep -q "$expected"; then
+    echo "  PASS"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL ($name): expected '$expected'"
+    echo "  Output:|$(echo "$output" | grep -v "^> \|^WARNING\|^2026-\|java.base")|"
+    FAIL=$((FAIL + 1))
+  fi
+}
 
-if [ $? -eq 0 ]; then
-  echo "PASS: Invalid model rejected with errors"
-else
-  echo "FAIL: Invalid model did not produce expected errors"
-fi
+echo "=== Test 1: Valid standalone model ==="
+run_test "standalone" "The model content is valid" \
+  -validate-text 'model Test global { init { write "hello"; } }'
 
 echo ""
-echo "=== Test 3: Empty model content ==="
-java -cp "$LAUNCHER_JAR" \
-  -Xms512m -Xmx2g \
-  --add-exports java.base/java.lang=ALL-UNNAMED \
-  --add-opens java.base/java.lang=ALL-UNNAMED \
-  --enable-preview \
-  org.eclipse.equinox.launcher.Main \
-  -configuration "$CONFIG_DIR" \
-  -application gama.headless.product \
-  -data "/tmp/gama-test-empty-$$" \
-  -validate-text '' 2>&1 | grep -E "(No model content|valid|Error)"
-
-if [ $? -eq 0 ]; then
-  echo "PASS: Empty content properly rejected"
-else
-  echo "FAIL: Empty content handling unexpected"
-fi
+echo "=== Test 2: Invalid syntax ==="
+run_test "syntax" "Error in model" \
+  -validate-text 'not valid gaml syntax'
 
 echo ""
-echo "=== All tests complete ==="
+echo "=== Test 3: Empty content ==="
+run_test "empty" "No model content" \
+  -validate-text ''
+
+echo ""
+echo "=== Test 4: Two models (Main imports Base) ==="
+run_test "import" "The model content is valid" \
+  -validate-text 'model Base global { init { write "base"; } }' \
+  'model Main import "Base.gaml" global { init { write "main"; } }'
+
+echo ""
+echo "=== Test 5: Three models (C imports B, B imports A) ==="
+run_test "chain" "The model content is valid" \
+  -validate-text 'model A global { init { write "a"; } }' \
+  'model B import "A.gaml" global { init { write "b"; } }' \
+  'model C import "B.gaml" global { init { write "c"; } }'
+
+echo ""
+echo "=== Test 6: Broken import (single model) ==="
+run_test "missing-import" "Impossible to locate" \
+  -validate-text 'model X import "NoSuchModel.gaml" global {}'
+
+echo ""
+echo "=== Test 7: Subfolder import with explicit path ==="
+run_test "subfolder" "The model content is valid" \
+  -validate-text 'sub/Base.gaml|model Base global {}' \
+  'model Main import "sub/Base.gaml" global { init { write "main"; } }'
+
+echo ""
+echo "=== Test 8: Deep nesting (a/b/c) ==="
+run_test "deep-nesting" "The model content is valid" \
+  -validate-text 'a/b/c/Deep.gaml|model Deep global {}' \
+  'model Main import "a/b/c/Deep.gaml" global { init { write "main"; } }'
+
+echo ""
+echo "=== Test 9: Parent directory traversal (../../) ==="
+run_test "parent-dir" "The model content is valid" \
+  -validate-text 'a/lib/Base.gaml|model Base global {}' \
+  'a/b/c/Child.gaml|model Child import "../../lib/Base.gaml" global { init { write "child"; } }'
+
+echo ""
+echo "=== Test 10: Mixed style (path|content + name-extracted) ==="
+run_test "mixed-style" "The model content is valid" \
+  -validate-text 'lib/Base.gaml|model Base global {}' \
+  'model Main import "lib/Base.gaml" global { init { write "main"; } }'
+
+echo ""
+echo "=== Results: $PASS passed, $FAIL failed ==="
+exit $FAIL

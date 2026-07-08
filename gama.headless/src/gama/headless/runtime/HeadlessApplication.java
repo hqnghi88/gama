@@ -17,11 +17,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -69,7 +74,6 @@ import gama.core.CoreActivator;
 import gama.workspace.WorkspaceActivator;
 import gaml.compiler.GamlStandaloneSetup;
 import gaml.compiler.validation.GamlModelBuilder;
-import gaml.compiler.validation.GamlTextValidator;
 
 /**
  * The Class Application.
@@ -248,8 +252,13 @@ public class HeadlessApplication implements IApplication {
 				+ GAMA_VERSION + "                      -- get the the version of gama" + "\n\t=== Library Runner ==="
 				+ "\n\t\t" + VALIDATE_LIBRARY_PARAMETER
 				+ "                     -- invokes GAMA to validate models present in built-in library and plugins"
-				+ "\n\t\t" + VALIDATE_TEXT_PARAMETER + " [modelContent]"
-				+ "\n\t\t                              -- validates a GAML model provided as a string"
+				+ "\n\t\t" + VALIDATE_TEXT_PARAMETER + " [modelContent1] [modelContent2] ..."
+				+ "\n\t\t                              -- validates GAML models provided as strings."
+				+ " Multiple models can be passed;"
+				+ " the last one is the main model to validate."
+				+ " Use 'path|content' syntax to"
+				+ " preserve relative paths for imports."
+				+ " If no '|' is present, the model name is extracted from the content."
 				+ "\n\t\t" + TEST_LIBRARY_PARAMETER
 				+ "                         -- invokes GAMA to execute the tests present in built-in library and plugins and display their results"
 				+ "\n\t=== GAMA Headless Runner ===" + "\n\t\t" + SOCKET_PARAMETER
@@ -329,7 +338,6 @@ public class HeadlessApplication implements IApplication {
 			mustContainOutFolder = mustContainInFile = false;
 		}
 		if (args.contains(VALIDATE_TEXT_PARAMETER)) {
-			size = size - 2;
 			mustContainOutFolder = mustContainInFile = false;
 		}
 		if (args.contains(BATCH_PARAMETER)) {
@@ -467,31 +475,101 @@ public class HeadlessApplication implements IApplication {
 	 * @return the integer
 	 */
 	private Integer validateText(final List<String> args) {
-		final String content = after(args, VALIDATE_TEXT_PARAMETER);
-		if (content == null || content.isBlank()) {
+		final List<String> modelArgs = afterAll(args, VALIDATE_TEXT_PARAMETER);
+		if (modelArgs.isEmpty()) {
 			DEBUG.ERR("No model content provided with " + VALIDATE_TEXT_PARAMETER + " parameter.");
 			return 1;
 		}
 
-		final List<GamlCompilationError> errors = new ArrayList<>();
-		GamlTextValidator.getInstance().validateModel(content, errors, false);
-
-		if (errors.isEmpty()) {
-			DEBUG.LOG("The model content is valid.");
-			return 0;
+		final Path tempDir;
+		try {
+			tempDir = Files.createTempDirectory("gama-validate-");
+		} catch (IOException e) {
+			DEBUG.ERR("Failed to create temp directory: " + e.getMessage());
+			return 1;
 		}
 
-		final int[] errorCount = { 0 };
-		errors.stream().filter(GamlCompilationError::isError).forEach(e -> {
-			DEBUG.ERR("Error in model: " + e.toString());
-			errorCount[0]++;
-		});
+		final List<Path> tempFiles = new ArrayList<>();
+		try {
+			for (String modelArg : modelArgs) {
+				if (modelArg.isEmpty()) { continue; }
+				final int sep = modelArg.indexOf('|');
+				final String relPath;
+				final String content;
+				if (sep > 0) {
+					relPath = modelArg.substring(0, sep);
+					content = modelArg.substring(sep + 1);
+				} else {
+					content = modelArg;
+					relPath = extractModelName(modelArg) + ".gaml";
+				}
+				final Path file = tempDir.resolve(relPath);
+				try {
+					Files.createDirectories(file.getParent());
+					Files.writeString(file, content);
+				} catch (IOException e) {
+					DEBUG.ERR("Failed to write model '" + relPath + "': " + e.getMessage());
+					return 1;
+				}
+				tempFiles.add(file);
+			}
 
-		final long warningCount = errors.stream().filter(e -> !e.isError()).count();
-		if (warningCount > 0) { DEBUG.LOG(warningCount + " warning(s) found."); }
+			if (tempFiles.isEmpty()) {
+				DEBUG.ERR("No model content provided with " + VALIDATE_TEXT_PARAMETER + " parameter.");
+				return 1;
+			}
+			final Path mainFile = tempFiles.get(tempFiles.size() - 1);
+			final Injector injector = getInjector();
+			final GamlModelBuilder builder = new GamlModelBuilder(injector);
+			final List<GamlCompilationError> errors = new ArrayList<>();
+			try {
+				builder.compile(URI.createFileURI(mainFile.toAbsolutePath().toString()), errors);
+			} catch (RuntimeException e) {
+				final String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+				DEBUG.ERR("Error in model: " + msg);
+				return 1;
+			}
 
-		DEBUG.LOG("Validation complete: " + errorCount[0] + " error(s), " + warningCount + " warning(s).");
-		return errorCount[0];
+			if (errors.isEmpty()) {
+				DEBUG.LOG("The model content is valid.");
+				return 0;
+			}
+
+			final int[] errorCount = { 0 };
+			errors.stream().filter(GamlCompilationError::isError).forEach(e -> {
+				DEBUG.ERR("Error in model: " + e.toString());
+				errorCount[0]++;
+			});
+
+			final long warningCount = errors.stream().filter(e -> !e.isError()).count();
+			if (warningCount > 0) { DEBUG.LOG(warningCount + " warning(s) found."); }
+
+			DEBUG.LOG("Validation complete: " + errorCount[0] + " error(s), " + warningCount + " warning(s).");
+			return errorCount[0];
+		} finally {
+			try {
+				Files.walk(tempDir).sorted(Comparator.reverseOrder())
+						.forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException e) {} });
+			} catch (IOException e) {}
+		}
+	}
+
+	/**
+	 * Extract model name from GAML content ("model <name>").
+	 */
+	private String extractModelName(final String content) {
+		final Matcher m = Pattern.compile("\\bmodel\\s+(\\w+)").matcher(content);
+		return m.find() ? m.group(1) : "Unknown";
+	}
+
+	/**
+	 * Returns all arguments after the given flag.
+	 */
+	private List<String> afterAll(final List<String> args, final String flag) {
+		for (int i = 0; i < args.size(); i++) {
+			if (args.get(i).equals(flag)) { return args.subList(i + 1, args.size()); }
+		}
+		return List.of();
 	}
 
 	/**
