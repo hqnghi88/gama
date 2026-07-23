@@ -139,20 +139,47 @@ public class GamaBundleLoader {
 	/** The errored. */
 	public volatile static boolean ERRORED = false;
 
-	/** The Constant API_PLUGIN. */
-	public static final Bundle API_PLUGIN = Platform.getBundle("gama.api");
+	/**
+	 * Indicates whether the platform is running in standalone mode (no OSGi runtime).
+	 * In standalone mode, Eclipse/OSGi APIs are unavailable and ServiceLoader-based loading is used instead.
+	 */
+	public static final boolean STANDALONE;
 
-	/** The core plugin. */
-	public static final Bundle CORE_PLUGIN = Platform.getBundle("gama.core");
+	/** The Constant API_PLUGIN. Null in standalone mode. */
+	public static final Bundle API_PLUGIN;
 
-	/** The core models. */
-	public static final Bundle CORE_MODELS = Platform.getBundle("gama.library");
+	/** The core plugin. Null in standalone mode. */
+	public static final Bundle CORE_PLUGIN;
+
+	/** The core models. Null in standalone mode. */
+	public static final Bundle CORE_MODELS;
 
 	/** The core tests. */
 	public static final String CORE_TESTS = "tests";
 
 	/** The current plugin name. */
-	public static String CURRENT_PLUGIN_NAME = API_PLUGIN.getSymbolicName();
+	public static String CURRENT_PLUGIN_NAME;
+
+	static {
+		boolean standalone;
+		Bundle apiPlugin = null;
+		Bundle corePlugin = null;
+		Bundle coreModels = null;
+		try {
+			apiPlugin = Platform.getBundle("gama.api");
+			corePlugin = Platform.getBundle("gama.core");
+			coreModels = Platform.getBundle("gama.library");
+			standalone = apiPlugin == null;
+		} catch (final Throwable t) {
+			// OSGi runtime not available (standalone mode)
+			standalone = true;
+		}
+		STANDALONE = standalone;
+		API_PLUGIN = apiPlugin;
+		CORE_PLUGIN = corePlugin;
+		CORE_MODELS = coreModels;
+		CURRENT_PLUGIN_NAME = apiPlugin != null ? apiPlugin.getSymbolicName() : "gama.api";
+	}
 
 	/** The Constant ADDITIONS_PACKAGE_BASE. */
 	public static final String ADDITIONS_PACKAGE_BASE = "gaml.additions";
@@ -289,7 +316,94 @@ public class GamaBundleLoader {
 						+ SystemInfo.JAVA_VM_VERSION);
 
 		TIMER(BANNER_CATEGORY.GAML, "Plugins with language additions", "loaded in", () -> {
-			final IExtensionRegistry registry = Platform.getExtensionRegistry();
+			IExtensionRegistry reg = null;
+			try {
+				reg = Platform.getExtensionRegistry();
+			} catch (final Throwable t) {
+				// Standalone / registry-less environment
+			}
+			final IExtensionRegistry registry = reg;
+
+			if (registry == null) {
+				// Standalone ServiceLoader mode
+				final List<IGamlAdditions> additionsList = new ArrayList<>();
+				try {
+					final java.util.ServiceLoader<IGamlAdditions> loader = java.util.ServiceLoader.load(IGamlAdditions.class);
+					for (final IGamlAdditions additions : loader) {
+						additionsList.add(additions);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for IGamlAdditions failed: " + t.getMessage());
+				}
+				additionsList.sort(java.util.Comparator.comparing(a -> a.getClass().getName()));
+				for (final IGamlAdditions additions : additionsList) {
+					try {
+						additions.initialize();
+					} catch (final Throwable e) {
+						ERROR("Error loading additions: " + additions.getClass().getName(), new Exception(e));
+					}
+				}
+
+				// Load create delegates
+				try {
+					for (final ICreateDelegate cd : java.util.ServiceLoader.load(ICreateDelegate.class)) {
+						GamaAdditionRegistry.addDelegate(cd);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for ICreateDelegate failed: " + t.getMessage());
+				}
+				// Load save delegates
+				try {
+					for (final ISaveDelegate sd : java.util.ServiceLoader.load(ISaveDelegate.class)) {
+						GamaAdditionRegistry.addDelegate(sd);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for ISaveDelegate failed: " + t.getMessage());
+				}
+				// Load draw delegates
+				try {
+					for (final IDrawDelegate dd : java.util.ServiceLoader.load(IDrawDelegate.class)) {
+						GamaAdditionRegistry.addDelegate(dd);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for IDrawDelegate failed: " + t.getMessage());
+				}
+				// Load event layer delegates
+				try {
+					for (final IEventLayerDelegate ed : java.util.ServiceLoader.load(IEventLayerDelegate.class)) {
+						GamaAdditionRegistry.addDelegate(ed);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for IEventLayerDelegate failed: " + t.getMessage());
+				}
+				// Load constants suppliers
+				try {
+					for (final IConstantsSupplier cs : java.util.ServiceLoader.load(IConstantsSupplier.class)) {
+						GamaAdditionRegistry.addConstants(cs);
+					}
+				} catch (final Throwable t) {
+					DEBUG.LOG("ServiceLoader for IConstantsSupplier failed: " + t.getMessage());
+				}
+
+				// Building metamodel and initializing types
+				try {
+					GamaMetaModel.build();
+				} catch (RuntimeException e) {
+					ERROR("Error in building metamodel. ", e);
+				}
+				try {
+					Types.init();
+				} catch (RuntimeException e) {
+					ERROR("Error in initializing types. ", e);
+				}
+				try {
+					GamaMetaModel.getSpeciesDescription(IKeyword.PLATFORM).validate();
+				} catch (final Throwable t) {
+					// safe fallback
+				}
+				return;
+			}
+
 			// We retrieve the elements declared as extensions to the GAML language,
 			// either with the new or the deprecated extension, and add their contributor plugin to GAMA_PLUGINS
 			try {
@@ -896,6 +1010,9 @@ public class GamaBundleLoader {
 	 *
 	 * @return true, if is diagram editor loaded
 	 */
-	public static boolean isDiagramEditorLoaded() { return Platform.getBundle(GAMA_DIAGRAM_EDITOR_PLUGIN) != null; }
+	public static boolean isDiagramEditorLoaded() {
+		if (STANDALONE) return false;
+		return Platform.getBundle(GAMA_DIAGRAM_EDITOR_PLUGIN) != null;
+	}
 
 }

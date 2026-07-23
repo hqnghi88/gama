@@ -1043,17 +1043,19 @@ public class GamlSpecies extends Symbol implements ISpecies {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
 	public IMatrix<? extends IAgent> matrixValue(final IScope scope, final IType contentsType, final boolean copy)
 			throws GamaRuntimeException {
 		final IPopulation<? extends IAgent> pop = getPopulation(scope);
-		return pop == null ? null : pop.matrixValue(scope, contentsType, copy);
+		return pop == null ? null : (IMatrix<? extends IAgent>) pop.matrixValue(scope, contentsType, copy);
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
 	public IMatrix<? extends IAgent> matrixValue(final IScope scope, final IType contentsType,
 			final IPoint preferredSize, final boolean copy) throws GamaRuntimeException {
 		final IPopulation<? extends IAgent> pop = getPopulation(scope);
-		return pop == null ? null : pop.matrixValue(scope, contentsType, preferredSize, copy);
+		return pop == null ? null : (IMatrix<? extends IAgent>) pop.matrixValue(scope, contentsType, preferredSize, copy);
 	}
 
 	@Override

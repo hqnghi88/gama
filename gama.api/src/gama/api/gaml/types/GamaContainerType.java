@@ -47,7 +47,8 @@ import gama.api.types.misc.IContainer;
 		kind = ISymbolKind.REGULAR,
 		concept = { IConcept.TYPE, IConcept.CONTAINER },
 		doc = @doc ("Generic super-type of all the container types (list, graph, matrix, etc.)"))
-public class GamaContainerType<T extends IContainer<?, ?>> extends GamaType<T> implements IContainerType<T> {
+@SuppressWarnings("rawtypes")
+public class GamaContainerType<T extends IContainer> extends GamaType<T> implements IContainerType<T> {
 
 	/**
 	 * Constructs a new GamaContainerType.

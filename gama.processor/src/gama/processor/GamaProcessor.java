@@ -217,6 +217,19 @@ public class GamaProcessor extends AbstractProcessor implements Constants {
 		if (context.processingOver()) {
 			final FileObject file = context.createSource();
 			generateJavaSource(file);
+			try {
+				final FileObject serviceFile = context.getFiler().createResource(
+					javax.tools.StandardLocation.CLASS_OUTPUT,
+					"",
+					"META-INF/services/gama.api.additions.IGamlAdditions",
+					(Element[]) null
+				);
+				try (Writer writer = serviceFile.openWriter()) {
+					writer.write("gaml.additions." + context.shortcut + ".GamlAdditions\n");
+				}
+			} catch (final IOException e) {
+				context.emitWarning("Failed to create ServiceLoader registration file: " + e.getMessage(), e);
+			}
 			context.emit(Kind.NOTE, "GAML Processor: Java sources produced for " + context.currentPlugin + " in "
 					+ (System.currentTimeMillis() - begin) + "ms", (Element) null);
 			begin = System.currentTimeMillis();

@@ -118,15 +118,16 @@ public class FileUtils {
 	 */
 	public static File getCache() {
 		if (CACHE == null) {
-			// Use ResourcesPlugin directly so this is safe even before GAMA.getWorkspaceManager() is set.
-			final org.eclipse.core.runtime.IPath wsLoc =
-					org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation();
-			CACHE = wsLoc.append(CACHE_FOLDER_PATH).toFile();
+			try {
+				// Use ResourcesPlugin directly so this is safe even before GAMA.getWorkspaceManager() is set.
+				final org.eclipse.core.runtime.IPath wsLoc =
+						org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot().getLocation();
+				CACHE = wsLoc.append(CACHE_FOLDER_PATH).toFile();
+			} catch (final Throwable t) {
+				// Standalone mode: Eclipse workspace not available, use user home fallback
+				CACHE = new File(USER_HOME, ".gama" + File.separator + "cache");
+			}
 			if (!CACHE.exists()) { CACHE.mkdirs(); }
-			// NOTE: CACHE_LOC path variable registration removed.
-			// It is provided dynamically by CacheLocationProvider (PathVariableResolver extension point),
-			// which means no workspace metadata write is needed here — eliminating a source of
-			// "Workspace is closed" corruption on crash/force-quit.
 		}
 		return CACHE;
 	}

@@ -1,0 +1,5 @@
+gama.core.util.json.JSONInfo
+gama.core.util.file.CSVInfo
+gama.core.util.file.OSMInfo
+gama.core.util.file.ShapeInfo
+gama.core.util.file.GMLInfo

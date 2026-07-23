@@ -42,7 +42,8 @@ import gama.api.utils.json.IJsonValue;
  * @see IContainer
  * @see GamaContainerType
  */
-public interface IContainerType<T extends IContainer<?, ?>> extends IType<T> {
+@SuppressWarnings("rawtypes")
+public interface IContainerType<T extends IContainer> extends IType<T> {
 
 	/**
 	 * Gets the GAML type representation of this container type.

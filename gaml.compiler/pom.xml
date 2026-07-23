@@ -4,17 +4,81 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.gama</groupId>
-    <artifactId>gama.parent</artifactId>
+    <artifactId>gama.standalone-parent</artifactId>
     <version>0.0.0-SNAPSHOT</version>
-    <relativePath>../gama.parent/</relativePath>
+    <relativePath>../gama.standalone-parent/</relativePath>
   </parent>
   <artifactId>gaml.compiler</artifactId>
-  <packaging>eclipse-plugin</packaging>
+  <packaging>jar</packaging>
+
+  <properties>
+    <xtext.version>2.35.0</xtext.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.gama</groupId>
+      <artifactId>gama.api</artifactId>
+      <version>0.0.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.xtext</groupId>
+      <artifactId>org.eclipse.xtext</artifactId>
+      <version>${xtext.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.xtext</groupId>
+      <artifactId>org.eclipse.xtext.xbase.lib</artifactId>
+      <version>${xtext.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr-runtime</artifactId>
+      <version>3.2</version>
+    </dependency>
+  </dependencies>
+
   <build>
+    <sourceDirectory>src</sourceDirectory>
+    <resources>
+      <resource>
+        <directory>src</directory>
+        <includes>
+          <include>META-INF/**</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src-gen</directory>
+        <includes>
+          <include>**/*.xtextbin</include>
+          <include>**/*.xmi</include>
+          <include>**/*.tokens</include>
+          <include>**/*.g</include>
+          <include>**/plugin.xml</include>
+          <include>**/META-INF/**</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>add-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src-gen</source>
+                <source>gaml</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

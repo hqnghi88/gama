@@ -1,0 +1,12 @@
+gama.gaml.statements.save.ASCSaver
+gama.gaml.statements.save.CSVSaver
+gama.gaml.statements.save.GeoJSonSaver
+gama.gaml.statements.save.GeoTiffSaver
+gama.gaml.statements.save.GraphSaver
+gama.gaml.statements.save.KmlSaver
+gama.gaml.statements.save.ShapeSaver
+gama.gaml.statements.save.TextSaver
+gama.gaml.statements.save.JsonSaver
+gama.gaml.statements.save.ExcelSaver
+gama.gaml.statements.save.ParquetSaver
+gama.gaml.statements.save.AvroSaver

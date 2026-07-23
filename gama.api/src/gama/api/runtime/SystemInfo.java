@@ -91,7 +91,19 @@ public class SystemInfo {
 	public static final int JAVA_VERSION; // NO_UCD (unused code)
 
 	/** The detected platform string from Eclipse Platform API. */
-	private static String platformString = Platform.getOS();
+	private static String platformString;
+	static {
+		try {
+			platformString = Platform.getOS();
+		} catch (final Throwable t) {
+			// Standalone fallback
+			final String osName = System.getProperty("os.name", "").toLowerCase();
+			if (osName.contains("win")) platformString = "win32";
+			else if (osName.contains("mac")) platformString = "macosx";
+			else if (osName.contains("linux")) platformString = "linux";
+			else platformString = "unknown";
+		}
+	}
 
 	static {
 		JAVA_VERSION = parseVersion(System.getProperty("java.version")); //$NON-NLS-1$
@@ -290,7 +302,14 @@ public class SystemInfo {
 	}
 
 	/** Flag indicating if running on ARM architecture (Apple Silicon, ARM Windows, etc.). */
-	private static boolean isARM = Platform.ARCH_AARCH64.equals(Platform.getOSArch());
+	private static boolean isARM;
+	static {
+		try {
+			isARM = Platform.ARCH_AARCH64.equals(Platform.getOSArch());
+		} catch (final Throwable t) {
+			isARM = System.getProperty("os.arch", "").contains("aarch64") || System.getProperty("os.arch", "").contains("arm");
+		}
+	}
 
 	/** Cached result of isDeveloper() check. */
 	private static volatile Boolean isDeveloper;

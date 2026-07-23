@@ -25,6 +25,8 @@ import gama.api.additions.delegates.ICreateDelegate;
 import gama.api.additions.delegates.IDrawDelegate;
 import gama.api.additions.delegates.IEventLayerDelegate;
 import gama.api.additions.delegates.ISaveDelegate;
+import gama.api.additions.delegates.IConstantsSupplier;
+import gama.api.gaml.GAML;
 import gama.api.gaml.types.IType;
 import gama.api.gaml.types.Types;
 import gama.api.ui.displays.IDisplayCreator;
@@ -160,6 +162,15 @@ public class GamaAdditionRegistry {
 	 */
 	public static void addDelegate(final IEventLayerDelegate delegate) {
 		EVENT_LAYER_DELEGATES.add(delegate);
+	}
+
+	/**
+	 * Registers constants from a supplier into the GAML constants registry.
+	 *
+	 * @param supplier the constants supplier to register
+	 */
+	public static void addConstants(final IConstantsSupplier supplier) {
+		supplier.supplyConstantsTo(GAML.getConstantAcceptor());
 	}
 
 	/**

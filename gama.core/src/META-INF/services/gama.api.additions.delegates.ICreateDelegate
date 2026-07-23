@@ -1,0 +1,4 @@
+gama.gaml.statements.create.CreateFromCSVDelegate
+gama.gaml.statements.create.CreateFromGeometriesDelegate
+gama.gaml.statements.create.CreateFromGridFileDelegate
+gama.gaml.statements.create.CreateFromNullDelegate

@@ -1,0 +1,4 @@
+gama.gaml.statements.draw.AssetDrawer
+gama.gaml.statements.draw.AspectDrawer
+gama.gaml.statements.draw.ShapeDrawer
+gama.gaml.statements.draw.TextDrawer

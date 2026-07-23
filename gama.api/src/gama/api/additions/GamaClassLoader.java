@@ -51,6 +51,48 @@ public class GamaClassLoader extends ClassLoader {
 	private GamaClassLoader() {}
 
 	/**
+	 * Adds a named ClassLoader to the registry (standalone mode). Creates a delegating ClassLoader
+	 * for the given ClassLoader and stores it using the provided name as key.
+	 *
+	 * @param name
+	 *            a unique name for this class loader (e.g., a plugin symbolic name)
+	 * @param cl
+	 *            the ClassLoader to register
+	 */
+	public void addClassLoader(final String name, final ClassLoader cl) {
+		bundleLoaders.put(name, new ClassLoader(null) {
+			@Override
+			protected Class findClass(final String className) throws ClassNotFoundException {
+				try {
+					return cl.loadClass(className);
+				} catch (final Exception cnfe) {
+					throw new ClassNotFoundException(className + " not found in [" + name + "]", cnfe);
+				}
+			}
+
+			@Override
+			protected URL findResource(final String resName) {
+				return cl.getResource(resName);
+			}
+
+			@Override
+			protected Enumeration findResources(final String resName) throws IOException {
+				return cl.getResources(resName);
+			}
+
+			@Override
+			public URL getResource(final String resName) {
+				return findResource(resName);
+			}
+
+			@Override
+			protected Class<?> loadClass(final String className, final boolean resolve) throws ClassNotFoundException {
+				return findClass(className);
+			}
+		});
+	}
+
+	/**
 	 * Adds a bundle to the class loader registry. Creates a custom ClassLoader for the given OSGi bundle that
 	 * delegates class loading, resource loading, and resource enumeration to the bundle. The loader is stored
 	 * using the bundle's symbolic name as the key.

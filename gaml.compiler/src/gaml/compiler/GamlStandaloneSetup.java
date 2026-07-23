@@ -12,6 +12,7 @@
 package gaml.compiler;
 
 import org.eclipse.xtext.scoping.IGlobalScopeProvider;
+import org.eclipse.xtext.resource.impl.BinaryGrammarResourceFactoryImpl;
 
 import com.google.inject.Injector;
 
@@ -49,6 +50,11 @@ public class GamlStandaloneSetup extends GamlStandaloneSetupGenerated {
 	 * @return the Guice injector for the GAML language
 	 */
 	public static Injector doSetup() {
+		// Register BinaryGrammarResourceFactoryImpl for .xmi so that the generated
+		// GamlGrammarAccess (which loads classpath:/gaml/compiler/Gaml.xmi) uses the
+		// binary grammar format (xtextbin) transparently
+		org.eclipse.emf.ecore.resource.Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap()
+				.put("xmi", new BinaryGrammarResourceFactoryImpl());
 		return new GamlStandaloneSetupGenerated().createInjectorAndDoEMFRegistration();
 	}
 

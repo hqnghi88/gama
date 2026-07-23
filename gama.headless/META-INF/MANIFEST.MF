@@ -7,9 +7,6 @@ Require-Bundle: gama.core,
  gaml.compiler,
  org.eclipse.core.runtime,
  gama.dependencies,
- gama.extension.traffic,
- gama.extension.maths,
- gama.extension.database,
  gama.extension.network
 Bundle-ActivationPolicy: lazy
 Export-Package: 

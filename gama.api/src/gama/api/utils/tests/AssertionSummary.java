@@ -21,7 +21,7 @@ import gama.api.utils.StringUtils;
  * @author drogoul
  *
  */
-public class AssertionSummary extends AbstractSummary<WithTestSummary> {
+public class AssertionSummary extends AbstractSummary<WithTestSummary<?>> {
 
 	/** The state. */
 	private TestState state = TestState.NOT_RUN;

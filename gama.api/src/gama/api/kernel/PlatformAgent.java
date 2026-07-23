@@ -435,9 +435,14 @@ public class PlatformAgent implements ITopLevelAgent.Platform {
 			value = "plugins",
 			initializer = true)
 	public IList<String> getPluginsList() {
-		final BundleContext bc = FrameworkUtil.getBundle(getClass()).getBundleContext();
-		return StreamEx.of(bc.getBundles()).map(Bundle::getSymbolicName)
-				.toCollection(GamaListFactory.getSupplier(Types.STRING));
+		try {
+			final BundleContext bc = FrameworkUtil.getBundle(getClass()).getBundleContext();
+			return StreamEx.of(bc.getBundles()).map(Bundle::getSymbolicName)
+					.toCollection(GamaListFactory.getSupplier(Types.STRING));
+		} catch (final Throwable t) {
+			// Standalone mode: OSGi not available
+			return GamaListFactory.create(Types.STRING);
+		}
 	}
 
 	/**
@@ -469,8 +474,13 @@ public class PlatformAgent implements ITopLevelAgent.Platform {
 			value = "version",
 			initializer = true)
 	public String getVersion() {
-		final BundleContext bc = FrameworkUtil.getBundle(getClass()).getBundleContext();
-		return bc.getBundle().getVersion().toString();
+		try {
+			final BundleContext bc = FrameworkUtil.getBundle(getClass()).getBundleContext();
+			return bc.getBundle().getVersion().toString();
+		} catch (final Throwable t) {
+			// Standalone mode: OSGi not available
+			return SystemInfo.VERSION_NUMBER;
+		}
 	}
 
 	/**

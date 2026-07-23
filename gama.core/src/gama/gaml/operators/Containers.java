@@ -11,6 +11,7 @@ package gama.gaml.operators;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -2489,7 +2490,7 @@ public class Containers {
 		if (!ct.isContainer()) throw GamaRuntimeException.error("Must be a list of list", scope);
 
 		final IList<IList> l = notNull(scope, list).listValue(scope, list.getGamlType().getContentType(), false);
-		List<? extends Set<Object>> setOfSet = l.stream(scope).map(LinkedHashSet::new).collect(Collectors.toList());
+		List<Set<Object>> setOfSet = l.stream(scope).map(o -> new LinkedHashSet<>((Collection) o)).collect(Collectors.toList());
 
 		IList<IList> res = GamaListFactory.create(ct);
 		Set<List<Object>> cp = Sets.cartesianProduct(setOfSet);

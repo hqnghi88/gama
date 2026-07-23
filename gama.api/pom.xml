@@ -4,17 +4,221 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.gama</groupId>
-    <artifactId>gama.parent</artifactId>
+    <artifactId>gama.standalone-parent</artifactId>
     <version>0.0.0-SNAPSHOT</version>
-    <relativePath>../gama.parent/</relativePath>
+    <relativePath>../gama.standalone-parent/</relativePath>
   </parent>
   <artifactId>gama.api</artifactId>
-  <packaging>eclipse-plugin</packaging>
+  <packaging>jar</packaging>
+
+  <properties>
+    <emf.version>2.29.0</emf.version>
+    <emf.common.version>2.29.0</emf.common.version>
+    <eclipse.platform.version>3.20.100</eclipse.platform.version>
+  </properties>
+
+  <dependencies>
+    <!-- Core GAMA modules -->
+    <dependency>
+      <groupId>org.gama</groupId>
+      <artifactId>gama.annotations</artifactId>
+      <version>0.0.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.gama</groupId>
+      <artifactId>gama.dev</artifactId>
+      <version>0.0.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.gama</groupId>
+      <artifactId>gama.dependencies</artifactId>
+      <version>0.0.0-SNAPSHOT</version>
+    </dependency>
+
+    <!-- EMF Dependencies -->
+    <dependency>
+      <groupId>org.eclipse.emf</groupId>
+      <artifactId>org.eclipse.emf.ecore</artifactId>
+      <version>${emf.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.emf</groupId>
+      <artifactId>org.eclipse.emf.common</artifactId>
+      <version>${emf.common.version}</version>
+    </dependency>
+
+    <!-- Eclipse Platform Utilities -->
+    <dependency>
+      <groupId>org.eclipse.platform</groupId>
+      <artifactId>org.eclipse.core.runtime</artifactId>
+      <version>3.30.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.platform</groupId>
+      <artifactId>org.eclipse.core.resources</artifactId>
+      <version>3.20.100</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.platform</groupId>
+      <artifactId>org.eclipse.core.filesystem</artifactId>
+      <version>1.10.100</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.platform</groupId>
+      <artifactId>org.eclipse.osgi</artifactId>
+      <version>3.19.0</version>
+    </dependency>
+
+    <!-- Guice Dependency injection used by Xtext/GAMA -->
+    <dependency>
+      <groupId>com.google.inject</groupId>
+      <artifactId>guice</artifactId>
+      <version>7.0.0</version>
+    </dependency>
+
+    <!-- Common Third Party Libraries -->
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>33.5.0-jre</version>
+    </dependency>
+    <dependency>
+      <groupId>org.locationtech.jts</groupId>
+      <artifactId>jts-core</artifactId>
+      <version>1.20.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jgrapht</groupId>
+      <artifactId>jgrapht-core</artifactId>
+      <version>1.5.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.17.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-math3</artifactId>
+      <version>3.6.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jfree</groupId>
+      <artifactId>jfreechart</artifactId>
+      <version>1.5.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.13</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.20.0</version>
+    </dependency>
+    <dependency>
+      <groupId>one.util</groupId>
+      <artifactId>streamex</artifactId>
+      <version>0.8.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-csv</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-excel</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-jdbc</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-json</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-avro</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.dflib</groupId>
+      <artifactId>dflib-parquet</artifactId>
+      <version>2.0.0-M6</version>
+    </dependency>
+
+    <!-- Java-WebSocket -->
+    <dependency>
+      <groupId>org.java-websocket</groupId>
+      <artifactId>Java-WebSocket</artifactId>
+      <version>1.6.0</version>
+    </dependency>
+
+    <!-- GeoTools -->
+    <dependency>
+      <groupId>org.geotools</groupId>
+      <artifactId>gt-api</artifactId>
+      <version>33.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.geotools</groupId>
+      <artifactId>gt-referencing</artifactId>
+      <version>33.4</version>
+    </dependency>
+
+    <!-- JSR 363 Units of Measurement -->
+    <dependency>
+      <groupId>javax.measure</groupId>
+      <artifactId>unit-api</artifactId>
+      <version>2.2</version>
+    </dependency>
+    <dependency>
+      <groupId>tech.units</groupId>
+      <artifactId>indriya</artifactId>
+      <version>2.2.3</version>
+    </dependency>
+  </dependencies>
+
   <build>
+    <sourceDirectory>src</sourceDirectory>
+    <resources>
+      <resource>
+        <directory>src</directory>
+        <includes>
+          <include>META-INF/**</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <id>add-gaml-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>gaml</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
