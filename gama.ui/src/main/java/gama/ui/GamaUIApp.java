@@ -9,16 +9,37 @@ import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.scene.text.Font;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.cell.TextFieldTreeCell;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import gama.api.GAMA;
 import gama.api.additions.GamaBundleLoader;
+import gama.api.additions.registries.AgentConstructorsRegistry;
 import gama.api.compilation.GamlCompilationError;
 import gama.api.kernel.species.IExperimentSpecies;
 import gama.api.kernel.species.IModelSpecies;
-import gama.core.standalone.StandaloneLauncher;
+import gama.api.types.matrix.GamaMatrixFactory;
+import gama.api.types.geometry.GamaShapeFactory;
+import gama.api.types.topology.GamaTopologyFactory;
+import gama.api.types.graph.GamaPathFactory;
+import gama.api.types.graph.GamaGraphFactory;
+import gama.api.types.message.GamaMessageFactory;
+import gama.core.agent.GamlAgent;
+import gama.core.agent.MinimalAgent;
+import gama.core.geometry.InternalGamaShapeFactory;
+import gama.core.standalone.StubGui;
+import gama.core.standalone.StubWorkspaceManager;
+import gama.core.topology.InternalTopologyFactory;
+import gama.core.util.graph.InternalGamaGraphFactory;
+import gama.core.util.json.Json;
+import gama.core.util.matrix.InternalGamaMatrixFactory;
+import gama.core.util.messaging.GamaMessage;
+import gama.core.util.path.InternalGamaPathFactory;
+import gama.gaml.operators.Dates;
 import gaml.compiler.GamlStandaloneSetup;
 import gaml.compiler.validation.GamlModelBuilder;
 
@@ -37,6 +58,16 @@ public class GamaUIApp extends Application {
     private File currentFile;
     private IModelSpecies currentModel;
     private Injector injector;
+    private TreeView<String> fileTree;
+
+    private static File getLibraryRoot() {
+        // gama.library is a sibling of gama.ui in the repo
+        File uiDir = new File(System.getProperty("user.dir"));
+        File repoRoot = uiDir.getParentFile();
+        if (repoRoot == null) repoRoot = uiDir;
+        File lib = new File(repoRoot, "gama.library/models");
+        return lib.exists() ? lib : repoRoot;
+    }
 
     @Override
     public void start(Stage primaryStage) {
@@ -48,7 +79,10 @@ public class GamaUIApp extends Application {
         // Toolbar
         root.setTop(createToolBar());
 
-        // Split pane: editor + console
+        // Left: file tree
+        root.setLeft(createFileTree());
+
+        // Center: editor + console
         SplitPane splitPane = new SplitPane();
         splitPane.setOrientation(Orientation.VERTICAL);
 
@@ -76,7 +110,7 @@ public class GamaUIApp extends Application {
         BorderPane.setMargin(statusBar, new Insets(5));
         root.setBottom(statusBar);
 
-        Scene scene = new Scene(root, 1200, 800);
+        Scene scene = new Scene(root, 1400, 900);
         primaryStage.setScene(scene);
         primaryStage.show();
 
@@ -101,30 +135,121 @@ public class GamaUIApp extends Application {
         stopBtn.setDisable(true);
         Button clearBtn = new Button("Clear");
         clearBtn.setOnAction(e -> { consoleOutput.clear(); statusLabel.setText("Ready"); });
+        Button refreshBtn = new Button("Refresh");
+        refreshBtn.setOnAction(e -> refreshFileTree());
 
         return new ToolBar(openBtn, new Separator(), validateBtn, compileBtn,
-                new Separator(), runBtn, stopBtn, new Separator(), clearBtn);
+                new Separator(), runBtn, stopBtn, new Separator(), clearBtn, refreshBtn);
+    }
+
+    private BorderPane createFileTree() {
+        BorderPane treePane = new BorderPane();
+        treePane.setPrefWidth(280);
+
+        Label treeHeader = new Label("  Models");
+        treeHeader.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 5 0;");
+        treePane.setTop(treeHeader);
+
+        TreeItem<String> root = buildTreeItem(getLibraryRoot());
+        root.setExpanded(true);
+
+        fileTree = new TreeView<>(root);
+        fileTree.setShowRoot(false);
+        fileTree.setCellFactory(tv -> new TextFieldTreeCell<String>() {
+            @Override
+            public void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item);
+                    setGraphic(getTreeItem() != null && getTreeItem().isLeaf()
+                            ? new Label("\uD83D\uDCC4 ")  // document icon
+                            : new Label("\uD83D\uDCC1 ")); // folder icon
+                }
+            }
+        });
+
+        fileTree.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                TreeItem<String> selected = fileTree.getSelectionModel().getSelectedItem();
+                if (selected != null && selected.isLeaf()) {
+                    File f = getFileForItem(selected);
+                    if (f != null && f.getName().endsWith(".gaml")) {
+                        loadFile(f);
+                    }
+                }
+            }
+        });
+
+        treePane.setCenter(new ScrollPane(fileTree));
+        return treePane;
+    }
+
+    private TreeItem<String> buildTreeItem(File dir) {
+        TreeItem<String> item = new TreeItem<>(dir.getName());
+        if (dir.isDirectory()) {
+            File[] children = dir.listFiles();
+            if (children != null) {
+                List<File> sorted = new ArrayList<>();
+                for (File c : children) sorted.add(c);
+                sorted.sort((a, b) -> {
+                    if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+                    return a.getName().compareToIgnoreCase(b.getName());
+                });
+                for (File child : sorted) {
+                    if (child.isDirectory() || child.getName().endsWith(".gaml")) {
+                        item.getChildren().add(buildTreeItem(child));
+                    }
+                }
+            }
+            item.setExpanded(dir.getName().equals("models") || dir.getParentFile() != null
+                    && dir.getParentFile().getName().equals("models"));
+        }
+        return item;
+    }
+
+    private File getFileForItem(TreeItem<String> item) {
+        List<String> path = new ArrayList<>();
+        TreeItem<String> current = item;
+        while (current != null) {
+            path.add(0, current.getValue());
+            current = current.getParent();
+        }
+        File f = getLibraryRoot();
+        for (int i = 1; i < path.size(); i++) {
+            f = new File(f, path.get(i));
+        }
+        return f;
+    }
+
+    private void refreshFileTree() {
+        TreeItem<String> newRoot = buildTreeItem(getLibraryRoot());
+        newRoot.setExpanded(true);
+        fileTree.setRoot(newRoot);
+        appendConsole("File tree refreshed.\n");
     }
 
     private void initializePlatform() {
         try {
-            gama.api.types.matrix.GamaMatrixFactory.setBuilder(new gama.core.util.matrix.InternalGamaMatrixFactory());
-            gama.api.types.geometry.GamaShapeFactory.setBuilder(new gama.core.geometry.InternalGamaShapeFactory());
-            gama.api.types.topology.GamaTopologyFactory.setBuilder(new gama.core.topology.InternalTopologyFactory());
-            gama.api.types.graph.GamaPathFactory.setBuilder(new gama.core.util.path.InternalGamaPathFactory());
-            gama.api.types.graph.GamaGraphFactory.setBuilder(new gama.core.util.graph.InternalGamaGraphFactory());
-            gama.api.types.message.GamaMessageFactory.setBuilder(new gama.core.util.messaging.GamaMessage.Factory());
+            GamaMatrixFactory.setBuilder(new InternalGamaMatrixFactory());
+            GamaShapeFactory.setBuilder(new InternalGamaShapeFactory());
+            GamaTopologyFactory.setBuilder(new InternalTopologyFactory());
+            GamaPathFactory.setBuilder(new InternalGamaPathFactory());
+            GamaGraphFactory.setBuilder(new InternalGamaGraphFactory());
+            GamaMessageFactory.setBuilder(new GamaMessage.Factory());
 
-            gama.gaml.operators.Dates.initialize();
-            gama.api.GAMA.setJsonEncoder(gama.core.util.json.Json.getNew());
-            gama.api.GAMA.setWorkspaceManager(new gama.core.standalone.StubWorkspaceManager());
+            Dates.initialize();
+            GAMA.setJsonEncoder(Json.getNew());
+            GAMA.setWorkspaceManager(new StubWorkspaceManager());
 
-            final gama.api.ui.IGui stubGui = gama.core.standalone.StubGui.create();
-            gama.api.GAMA.setHeadlessGui(stubGui);
-            gama.api.GAMA.setRegularGui(stubGui);
+            gama.api.ui.IGui stubGui = StubGui.create();
+            GAMA.setHeadlessGui(stubGui);
+            GAMA.setRegularGui(stubGui);
 
-            gama.api.additions.registries.AgentConstructorsRegistry.register(gama.core.agent.GamlAgent.class, false);
-            gama.api.additions.registries.AgentConstructorsRegistry.register(gama.core.agent.MinimalAgent.class, true);
+            AgentConstructorsRegistry.register(GamlAgent.class, false);
+            AgentConstructorsRegistry.register(MinimalAgent.class, true);
 
             gama.api.gaml.GAML.registerArtefactProtoFactory(gaml.compiler.prototypes.ArtefactFactory.getInstance());
             gama.api.gaml.GAML.registerDescriptionFactory(gaml.compiler.descriptions.DescriptionFactory.getInstance());
@@ -139,10 +264,10 @@ public class GamaUIApp extends Application {
             gama.api.gaml.GAML.registerExpressionFactory(gaml.compiler.expressions.GamlExpressionFactory.getInstance());
             gama.api.gaml.GAML.registerExpressionDescriptionFactory(gaml.compiler.factories.ExpressionDescriptionFactory.getInstance());
             gama.api.gaml.GAML.registerGamlContentProvider(gaml.compiler.resource.GamlResourceServices::getOrCreateSyntacticContents);
-            gama.api.gaml.GAML.registerGamlModelBuilder(gaml.compiler.validation.GamlModelBuilder.getInstance());
+            gama.api.gaml.GAML.registerGamlModelBuilder(GamlModelBuilder.getInstance());
             gama.api.gaml.GAML.registerGamlTextValidator(gaml.compiler.validation.GamlTextValidator.getInstance());
 
-            gama.api.additions.GamaBundleLoader.buildContributions();
+            GamaBundleLoader.buildContributions();
 
             injector = GamlStandaloneSetup.doSetup();
             GamlStandaloneSetup.initializeAfterPlatformReady(injector);
@@ -166,19 +291,23 @@ public class GamaUIApp extends Application {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("GAMA Models", "*.gaml"));
         File file = fc.showOpenDialog(getPrimaryStage());
         if (file != null) {
-            currentFile = file;
-            try {
-                codeEditor.setText(new String(java.nio.file.Files.readAllBytes(file.toPath())));
-                statusLabel.setText("Loaded: " + file.getName());
-                validateBtn.setDisable(false);
-                compileBtn.setDisable(false);
-                runBtn.setDisable(true);
-                experimentCombo.getItems().clear();
-                currentModel = null;
-                appendConsole("Loaded: " + file.getAbsolutePath() + "\n");
-            } catch (Exception e) {
-                appendConsole("Error loading: " + e.getMessage() + "\n");
-            }
+            loadFile(file);
+        }
+    }
+
+    private void loadFile(File file) {
+        currentFile = file;
+        try {
+            codeEditor.setText(new String(java.nio.file.Files.readAllBytes(file.toPath())));
+            statusLabel.setText("Loaded: " + file.getName());
+            validateBtn.setDisable(false);
+            compileBtn.setDisable(false);
+            runBtn.setDisable(true);
+            experimentCombo.getItems().clear();
+            currentModel = null;
+            appendConsole("Loaded: " + file.getAbsolutePath() + "\n");
+        } catch (Exception e) {
+            appendConsole("Error loading: " + e.getMessage() + "\n");
         }
     }
 

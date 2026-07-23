@@ -313,9 +313,10 @@ public class LayeredDisplayOutput extends AbstractOutput implements IOutput.Disp
 			String cand = "";
 			// Addresses and fixes Issue 833.
 			final String s = type.getExpression().literalValue();
-			if (!GamaAdditionRegistry.getDisplays().containsKey(s) && !gama.api.GAMA.isInHeadLessMode()) {
-				// In headless mode, all displays should be accepted
-				cand = GamaAdditionRegistry.getDisplays().keySet().stream().findFirst().get();
+			if (!GamaAdditionRegistry.getDisplays().containsKey(s) && !gama.api.GAMA.isInHeadLessMode()
+					&& !GamaAdditionRegistry.getDisplays().keySet().isEmpty()) {
+				// In headless mode or standalone mode without display plugins, all displays should be accepted
+				cand = GamaAdditionRegistry.getDisplays().keySet().stream().findFirst().orElse("");
 
 				d.warning(
 						s + " is not a valid display type. Valid types are:"

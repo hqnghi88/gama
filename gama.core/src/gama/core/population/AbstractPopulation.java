@@ -131,7 +131,7 @@ public abstract class AbstractPopulation<T extends IAgent> implements IPopulatio
 		final ITypeDescription ecd = species.getDescription();
 		this.type = Types.LIST.of(ecd.getModelDescription().getTypeNamed(species.getName()));
 		orderedVars = orderAttributes(ecd, v -> true, IVariableDescription.INIT_DEPENDENCIES_FACETS);
-		for (IVariable v : orderedVars) { orderedVarNames.add(v.getName()); }
+		for (IVariable v : orderedVars) { if (v != null) orderedVarNames.add(v.getName()); }
 		updatableVars = orderAttributes(ecd, IVariableDescription::isUpdatable,
 				IVariableDescription.UPDATE_DEPENDENCIES_FACETS);
 		hashCode = Objects.hash(getSpecies(), getHost());
