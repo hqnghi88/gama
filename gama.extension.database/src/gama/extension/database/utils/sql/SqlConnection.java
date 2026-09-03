@@ -27,8 +27,6 @@ import gama.api.gaml.types.Cast;
 import gama.api.gaml.types.Types;
 import gama.api.kernel.topology.IProjection;
 import gama.api.runtime.scope.IScope;
-import gama.api.types.dataframe.GamaDataFrameFactory;
-import gama.api.types.dataframe.IDataFrame;
 import gama.api.types.geometry.GamaShapeFactory;
 import gama.api.types.geometry.IShape;
 import gama.api.types.list.GamaListFactory;
@@ -38,6 +36,8 @@ import gama.api.utils.geometry.IEnvelope;
 import gama.api.utils.prefs.GamaPreferences;
 import gama.core.topology.gis.Projection;
 import gama.dev.DEBUG;
+import gama.extension.dataframe.GamaDataFrameFactory;
+import gama.extension.dataframe.IDataFrame;
 
 /**
  * The Class SqlConnection.
@@ -512,8 +512,8 @@ public abstract class SqlConnection implements AutoCloseable {
 
 	/**
 	 * Builds a dataframe from a result set: reads column names and types, converts records (geometry columns are
-	 * reprojected to the world CRS when {@code transformed} is set), and wraps everything as an {@link IDataFrame} whose
-	 * geometry cells are GAMA geometries.
+	 * reprojected to the world CRS when {@code transformed} is set), and wraps everything as an {@link IDataFrame}
+	 * whose geometry cells are GAMA geometries.
 	 *
 	 * @param scope
 	 *            the scope
@@ -527,7 +527,7 @@ public abstract class SqlConnection implements AutoCloseable {
 		final ResultSetMetaData rsmd = rs.getMetaData();
 		final IList<Object> colNames = getColumnName(rsmd);
 		final IList<Object> colTypes = getColumnTypeName(rsmd);
-		IList<Object> records = (IList<Object>) (IList) resultSet2GamaList(rsmd, rs);
+		IList<Object> records = (IList) resultSet2GamaList(rsmd, rs);
 		// Reproject geometries to the world CRS if requested
 		if (colTypes.contains(GEOMETRYTYPE) && transformed
 				&& scope.getSimulation().getProjectionFactory().getWorld() != null) {
@@ -543,9 +543,9 @@ public abstract class SqlConnection implements AutoCloseable {
 	}
 
 	/**
-	 * Converts the (column names, column types, records) triple produced by a query into an {@link IDataFrame}. Geometry
-	 * cells (columns typed {@link #GEOMETRYTYPE}) are turned into GAMA geometries so the dataframe is directly usable in
-	 * GAML and by the 'create ... from:' delegate.
+	 * Converts the (column names, column types, records) triple produced by a query into an {@link IDataFrame}.
+	 * Geometry cells (columns typed {@link #GEOMETRYTYPE}) are turned into GAMA geometries so the dataframe is directly
+	 * usable in GAML and by the 'create ... from:' delegate.
 	 *
 	 * @param scope
 	 *            the scope
@@ -764,7 +764,8 @@ public abstract class SqlConnection implements AutoCloseable {
 	 * @throws GamaRuntimeException
 	 *             the gama runtime exception
 	 */
-	public int insertDB(final IScope scope, final String table_name, final IDataFrame data) throws GamaRuntimeException {
+	public int insertDB(final IScope scope, final String table_name, final IDataFrame data)
+			throws GamaRuntimeException {
 		try (Connection conn = connectDB();) {
 			return insertDB(scope, conn, table_name, data);
 		} catch (final Exception e) {
