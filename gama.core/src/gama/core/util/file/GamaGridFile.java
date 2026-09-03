@@ -391,7 +391,7 @@ public class GamaGridFile extends GamaGisFile implements IFieldMatrixProvider {
 						double xC = xCorner == null ? 0 : xCorner;
 						double yC = yCorner == null ? 0 : yCorner;
 						final IEnvelope env =
-								GamaEnvelopeFactory.of(xC, yC, xC + nbCols * (dX == null ? 0 : dX), ascInfo[3], 0, 0);
+								GamaEnvelopeFactory.of(xC, xC + nbCols * (dX == null ? 0 : dX), yC, ascInfo[3], 0, 0);
 						computeProjection(scope, env);
 						numRows = nbRows;
 						numCols = nbCols;
