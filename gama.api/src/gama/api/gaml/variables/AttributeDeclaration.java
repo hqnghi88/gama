@@ -298,7 +298,7 @@ public class AttributeDeclaration extends Symbol implements IVariable {
 				// May 2019: a warning is emitted instead (see why in #2574)
 				if (STEP.equals(name) && cd.hasFacet(INIT) && !cd.hasFacet(UPDATE)) {
 					final IExpression expr = cd.getFacetExpr(INIT);
-					if (expr.isTimeDependent()) {
+					if (expr != null && expr.isTimeDependent()) {
 						cd.warning(
 								"""
 										Time dependent constants used to define the step at initialization are computed once based on the current_date. \
