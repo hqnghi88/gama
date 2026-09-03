@@ -143,9 +143,10 @@ public class ChartJFreeChartOutput extends ChartOutput implements ChartProgressL
 				chart.draw(g2D, area, info);
 			}
 		} catch (IndexOutOfBoundsException | IllegalArgumentException | NullPointerException e) {
-			// Do nothing. See #1605
-			// e.printStackTrace();
-			// Should we force redrawing in case of error ? See #3442
+			// Log and rethrow instead of silently swallowing, so the root cause of a blank
+			// chart is surfaced. The finally block below still disposes g2D. See #1605/#3442.
+			e.printStackTrace();
+			throw e;
 		} finally {
 			g2D.dispose();
 		}

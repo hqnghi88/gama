@@ -263,8 +263,17 @@ public class GridLayerData extends LayerData {
 	 *            the g
 	 */
 	protected void computeImage(final IScope scope, final IGraphics g) {
+		IGrid grd = getGrid();
+		// On Android, proxy agents (use_regular_agents:false) have no per-cell display data,
+		// so mirror the cell colors directly from the grid's canonical pixel source.
+		final int[] pixels = grd == null ? null : grd.supportImagePixels();
 		if (image == null) {
 			image = AbstractDisplayGraphics.createCompatibleImage((int) dim.getX(), (int) dim.getY());
+		}
+		if (pixels != null && image != null
+				&& image.getRaster().getDataBuffer() instanceof final DataBufferInt dbi) {
+			final int[] raster = dbi.getData();
+			System.arraycopy(pixels, 0, raster, 0, Math.min(pixels.length, raster.length));
 		}
 	}
 

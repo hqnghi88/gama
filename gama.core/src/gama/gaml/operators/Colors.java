@@ -798,16 +798,16 @@ public class Colors {
 			if (arguments[0].isConst()) {
 				final Object palette = arguments[0].getConstValue();
 				if (palette instanceof final String p) {
-					if (!BREWER.hasPalette(p)) {
+					if (BREWER == null || !BREWER.hasPalette(p)) {
 						context.error("Palette " + p + " does not exist. Available palette names are: "
-								+ Arrays.toString(BREWER.getPaletteNames()), UNKNOWN_ARGUMENT, emfContext);
+								+ (BREWER == null ? "[]" : Arrays.toString(BREWER.getPaletteNames())), UNKNOWN_ARGUMENT, emfContext);
 						return false;
 					}
 					if (arguments.length > 1) {
 						final IExpression exp = arguments[1];
 						if (exp.isConst()) {
 							final Object number = exp.getConstValue();
-							if (number instanceof Integer) {
+							if (number instanceof Integer && BREWER != null) {
 								final BrewerPalette pal = BREWER.getPalette(p);
 								if (pal.getCount() < (Integer) number) {
 									context.warning("Palette " + p + " has only " + pal.getCount() + " colors.",
@@ -823,7 +823,18 @@ public class Colors {
 	}
 
 	/** The Constant BREWER. */
-	static final ColorBrewer BREWER = ColorBrewer.instance();
+	static final ColorBrewer BREWER;
+	static {
+		ColorBrewer brewer = null;
+		try {
+			brewer = ColorBrewer.instance();
+		} catch (final Throwable e) {
+			// On Android the ColorBrewer XML palette init can fail; keep BREWER null so the
+			// rest of the color operators still work (brewer_* operators guard against null).
+			brewer = null;
+		}
+		BREWER = brewer;
+	}
 
 	/** The Constant BREWER_CACHE. */
 	static final LoadingCache<String, GamaPalette> BREWER_CACHE =
@@ -832,6 +843,7 @@ public class Colors {
 				@Override
 				public GamaPalette load(final String name) throws Exception {
 					IList<IColor> colors = GamaListFactory.create(Types.COLOR);
+					if (BREWER == null) { return new GamaPalette(colors); }
 					BrewerPalette p = BREWER.getPalette(name);
 					for (final Color col : p.getColors()) {
 						if (col != null) { colors.add(GamaColorFactory.createFromAWTColor(col)); }
@@ -867,7 +879,8 @@ public class Colors {
 			see = { "brewer_palettes" })
 	@no_test
 	public static GamaPalette brewerPaletteColors(final IScope scope, final String type) {
-		if (!BREWER.hasPalette(type)) throw GamaRuntimeException.error(type + " does not exist", scope);
+		if (BREWER == null || !BREWER.hasPalette(type))
+			throw GamaRuntimeException.error(type + " does not exist", scope);
 		try {
 			return new GamaPalette(BREWER_CACHE.get(type));
 		} catch (ExecutionException e) {
@@ -936,6 +949,7 @@ public class Colors {
 	@no_test
 	public static IList<String> brewerPaletteNames(final int min, final int max) {
 		final IList<String> palettes = GamaListFactory.create(Types.STRING);
+		if (BREWER == null) { return palettes; }
 		for (final BrewerPalette p : BREWER.getPalettes()) {
 			if (p.getCount() >= min && p.getCount() <= max) { palettes.add(p.getName()); }
 		}
@@ -965,6 +979,7 @@ public class Colors {
 	@no_test
 	public static IList<String> brewerPaletteNames(final int min) {
 		final IList<String> palettes = GamaListFactory.create(Types.STRING);
+		if (BREWER == null) { return palettes; }
 		for (final BrewerPalette p : BREWER.getPalettes()) { if (p.getCount() >= min) { palettes.add(p.getName()); } }
 		return palettes;
 	}

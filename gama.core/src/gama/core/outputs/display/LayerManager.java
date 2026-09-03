@@ -100,7 +100,15 @@ public class LayerManager implements ILayerManager {
 		for (final ILayerStatement layer : output.getLayers()) {
 			if (layer instanceof ILayerStatement.Event el) { eventLayers.put(el.getTrigger(), el); }
 			if (layer.isToCreate()) {
-				final ILayer result = createLayer(output, layer);
+				ILayer result = null;
+				try {
+					result = createLayer(output, layer);
+				} catch (final Throwable t) {
+					// One failing layer must not crash the whole display (e.g. a display
+					// unsupported on the current platform). Skip it and continue.
+					t.printStackTrace();
+					result = null;
+				}
 				if (result instanceof OverlayLayer) {
 					overlay = (OverlayLayer) result;
 				} else if (result != null) {

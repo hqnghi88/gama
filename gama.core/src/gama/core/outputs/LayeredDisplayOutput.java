@@ -488,7 +488,9 @@ public class LayeredDisplayOutput extends AbstractOutput implements IOutput.Disp
 		if (scope.getExperiment().isHeadless()) {
 			// If in headless mode, we need to get the 'image' surface
 			getData().setDisplayType(IKeyword.IMAGE);
-		} else if (getData().is3D()) return;
+		}
+		// 3D displays fall through to createDisplaySurfaceFor so they render on Android
+		// (upstream commented out the early return; kept here in sync).
 		surface = scope.getGui().createDisplaySurfaceFor(this, null);
 	}
 
