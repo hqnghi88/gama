@@ -204,13 +204,7 @@ public class Maths {
 		final GamaFloatMatrix mat = GamaFloatMatrix.from(scope, a);
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va = jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			va.pow(b).intoArray(nm.getMatrix(), i);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = Math.pow(m[i], b); }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = Math.pow(m[i], b); }
 		return nm;
 	}
 
@@ -306,13 +300,7 @@ public class Maths {
 		final GamaFloatMatrix mat = GamaFloatMatrix.from(scope, a);
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va = jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			va.abs().intoArray(nm.getMatrix(), i);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = Math.abs(m[i]); }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = Math.abs(m[i]); }
 		return nm;
 	}
 
@@ -687,13 +675,7 @@ public class Maths {
 		final GamaFloatMatrix mat = GamaFloatMatrix.from(scope, a);
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va = jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			va.mul(toRad).lanewise(jdk.incubator.vector.VectorOperators.COS).intoArray(nm.getMatrix(), i);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = Math.cos(m[i] * toRad); }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = Math.cos(m[i] * toRad); }
 		return nm;
 	}
 
@@ -767,13 +749,7 @@ public class Maths {
 		final GamaFloatMatrix mat = GamaFloatMatrix.from(scope, a);
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va = jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			va.mul(toRad).lanewise(jdk.incubator.vector.VectorOperators.SIN).intoArray(nm.getMatrix(), i);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = Math.sin(m[i] * toRad); }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = Math.sin(m[i] * toRad); }
 		return nm;
 	}
 

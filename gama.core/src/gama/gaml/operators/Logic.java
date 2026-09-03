@@ -120,19 +120,7 @@ public class Logic {
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(cols, rows);
 		final double[] mRes = nm.getMatrix();
 
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(mCond.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector vCond =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, mCond, i);
-			jdk.incubator.vector.DoubleVector vT =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, mT, i);
-			jdk.incubator.vector.DoubleVector vF =
-					jdk.incubator.vector.DoubleVector.broadcast(GamaFloatMatrix.SPECIES, falseValue);
-			jdk.incubator.vector.VectorMask<Double> mask = vCond.compare(jdk.incubator.vector.VectorOperators.GT, 0.0);
-			vF.blend(vT, mask).intoArray(mRes, i);
-		}
-		for (; i < mCond.length; i++) { mRes[i] = mCond[i] > 0.0 ? mT[i] : falseValue; }
+		for (int i = 0; i < mCond.length; i++) { mRes[i] = mCond[i] > 0.0 ? mT[i] : falseValue; }
 		return nm;
 	}
 
@@ -334,22 +322,7 @@ public class Logic {
 		final GamaFloatMatrix nm = (GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(cols, rows);
 		final double[] mRes = nm.getMatrix();
 
-		// 2. Run the high-performance Java Vector API loop
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(mCond.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector vCond =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, mCond, i);
-			jdk.incubator.vector.DoubleVector vT =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, mT, i);
-			jdk.incubator.vector.DoubleVector vF =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, mF, i);
-
-			jdk.incubator.vector.VectorMask<Double> mask = vCond.compare(jdk.incubator.vector.VectorOperators.GT, 0.0);
-			vF.blend(vT, mask).intoArray(mRes, i);
-		}
-		// Fallback loop for remaining elements
-		for (; i < mCond.length; i++) { mRes[i] = mCond[i] > 0.0 ? mT[i] : mF[i]; }
+		for (int i = 0; i < mCond.length; i++) { mRes[i] = mCond[i] > 0.0 ? mT[i] : mF[i]; }
 		return nm;
 	}
 
