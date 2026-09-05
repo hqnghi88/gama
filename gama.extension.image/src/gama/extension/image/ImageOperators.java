@@ -900,13 +900,11 @@ public class ImageOperators implements ImageConstants {
 		final int ySize = image.getHeight();
 		final IMatrix matrix = GamaMatrixFactory.createIntMatrix(xSize, ySize);
 		if (matrix instanceof GamaIntMatrix gim) {
+			// Read actual pixels via getRGB(). Avoid memcpy'ing the raw raster
+			// DataBufferInt storage: on headless/Android it can be uninitialized.
 			final int[] target = gim.getMatrix();
-			if (image.getRaster().getDataBuffer() instanceof DataBufferInt buffer) {
-				System.arraycopy(buffer.getData(), 0, target, 0, Math.min(buffer.getData().length, target.length));
-			} else {
-				final int[] source = image.getRGB(0, 0, xSize, ySize, null, 0, xSize);
-				System.arraycopy(source, 0, target, 0, Math.min(source.length, target.length));
-			}
+			final int[] source = image.getRGB(0, 0, xSize, ySize, null, 0, xSize);
+			System.arraycopy(source, 0, target, 0, Math.min(source.length, target.length));
 			return matrix;
 		}
 		for (int i = 0; i < xSize; i++) {

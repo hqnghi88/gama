@@ -539,7 +539,12 @@ public class ProjectionFactory implements IProjectionFactory {
 				TIMER_WITH_EXCEPTIONS(BANNER_CATEGORY.GEOTLS, "Initializing projections", "completed in", () -> {
 					EPSG3857 = new GamaCRS(CRS.decode("EPSG:3857"));
 				});
-			} catch (FactoryException e) {}
+			} catch (Exception | Error e) {
+				// Android: CRS.decode("EPSG:3857") can throw InvalidParameterValueException,
+				// which is not a FactoryException; without this wider catch the projection
+				// init fails and any later CRS use (e.g. GeoTIFF import) surfaces as a
+				// runtime error. Swallow (as before) so the rest of the machinery works.
+			}
 		};
 		CompletableFuture.runAsync(task, r -> Thread.ofVirtual().start(r));
 

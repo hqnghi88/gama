@@ -137,7 +137,7 @@ species car skills: [moving] {
 		draw rectangle(1.5,1) rotated_by heading color: color border: #black;
 	}
 	
-	aspect icon {
+	aspect vehicle_icon {
 		draw icon at: location size: 3 rotate: heading ;
 	}	
 }
@@ -154,7 +154,7 @@ experiment NetlogoTrafficmodel type: gui {
 		layout #vertical;
 		display road type:2d antialias:false{
 			grid pavement /*border: #black*/;
-			species car aspect: icon;
+			species car aspect: vehicle_icon;
 			
 		}
 
