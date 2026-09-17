@@ -12,8 +12,6 @@ package gama.ui.display.opengl4;
 
 import java.awt.image.BufferedImage;
 import java.nio.BufferOverflowException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,12 +19,20 @@ import java.util.Map;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Polygon;
 
-import android.opengl.GLES20;
+import com.jogamp.common.nio.Buffers;
+import com.jogamp.opengl.GL;
+import com.jogamp.opengl.GL2GL3;
+import com.jogamp.opengl.GL4;
+import com.jogamp.opengl.GLProfile;
+import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
+import com.jogamp.opengl.glu.GLU;
+import com.jogamp.opengl.util.texture.Texture;
 
 import gama.api.utils.geometry.GamaCoordinateSequenceFactory;
 import gama.api.utils.geometry.GeometryUtils;
 import gama.api.utils.geometry.ICoordinates.VertexVisitor;
-import gama.ui.display.opengl4.scene.text.FastTriangulation;
+import gama.ui.display.opengl.ITesselator;
+import jogamp.opengl.glu.tessellator.GLUtessellatorImpl;
 
 import gama.api.types.color.GamaColorFactory;
 import gama.api.types.color.IColor;
@@ -62,14 +68,14 @@ import gama.ui.display.opengl4.scene.mesh.MeshDrawer;
 import gama.ui.display.opengl4.scene.mesh.MeshObject;
 import gama.ui.display.opengl4.scene.resources.ResourceDrawer;
 import gama.ui.display.opengl4.scene.text.TextDrawer;
-
+import gama.ui.shared.utils.DPIHelper;
 
 /**
  * A class that represents an intermediate state between the rendering and the opengl state. Implements
  * {@link ITesselator} so that the GLU tessellator callbacks ({@code begin}, {@code vertex}, {@code end}) are wired
  * directly to the VBO-based drawing path used by this core-profile renderer.
  */
-public class OpenGL extends AbstractRendererHelper {
+public class OpenGL extends AbstractRendererHelper implements ITesselator {
 
 	static {
 		DEBUG.OFF();
@@ -82,8 +88,8 @@ public class OpenGL extends AbstractRendererHelper {
 	/** The Constant NO_TEXTURE. */
 	public static final int NO_TEXTURE = Integer.MAX_VALUE;
 
-	/** GLES 2.0 does not have profiles. */
-	// public static final GLProfile PROFILE = GLProfile.get(GLProfile.GL4);
+	/** The Constant PROFILE. */
+	public static final GLProfile PROFILE = GLProfile.get(GLProfile.GL4);
 
 	/** The drawers. */
 	final Map<DrawerType, ObjectDrawer<?>> drawers = new HashMap<>();
@@ -102,8 +108,8 @@ public class OpenGL extends AbstractRendererHelper {
 	public final double projmatrix[] = new double[16];
 
 	/** The gl. */
-	// The real openGL context — GLES20 uses static calls, no instance field needed
-	// private GL4 gl;
+	// The real openGL context
+	private GL4 gl;
 
 	/** The basic shader. */
 	private BasicShader basicShader;
@@ -122,12 +128,8 @@ public class OpenGL extends AbstractRendererHelper {
 	/** The projection matrix. */
 	private final MatrixStack projectionMatrix = new MatrixStack();
 
-	/** Local constants replacing GLMatrixFunc.GL_MODELVIEW / GL_PROJECTION sentinel values. */
-	private static final int GL_MODELVIEW_SENTINEL = 0;
-	private static final int GL_PROJECTION_SENTINEL = 1;
-
 	/** The current matrix mode. */
-	private int currentMatrixMode = GL_MODELVIEW_SENTINEL;
+	private int currentMatrixMode = GLMatrixFunc.GL_MODELVIEW;
 
 	/**
 	 * Gets the current matrix stack.
@@ -135,7 +137,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 * @return the current matrix stack
 	 */
 	public MatrixStack getCurrentMatrixStack() {
-		return currentMatrixMode == GL_PROJECTION_SENTINEL ? projectionMatrix : modelViewMatrix;
+		return currentMatrixMode == GLMatrixFunc.GL_PROJECTION ? projectionMatrix : modelViewMatrix;
 	}
 
 	/**
@@ -157,16 +159,16 @@ public class OpenGL extends AbstractRendererHelper {
 	public org.joml.Matrix4f getProjectionMatrix() { return projectionMatrix.getCurrentMatrix(); }
 
 	/**
-	 * Tessellation helper for triangulating concave polygons. Uses a pure-Java ear-clipping approach
-	 * instead of the JOGL GLU tessellator.
+	 * The glu. Used for GLU tessellator callbacks ({@code gluTessCallback} etc.) and for {@code gluProject} in
+	 * {@link #reshape} and {@link #getPixelWidthAndHeightOfWorld}. Not used for any fixed-function rendering.
 	 */
-	// GLU removed — tessellation handled via ITesselator callbacks backed by pure-Java triangulation
+	private final GLU glu;
 
 	/** The view height. */
 	private int viewWidth, viewHeight;
 
-	/** The current polygon mode. GLES 2.0 has no polygon mode; field retained for API compatibility only. */
-	private int currentPolygonMode = GLES20.GL_TRIANGLES;
+	/** The current polygon mode. */
+	private int currentPolygonMode = GL4.GL_FILL;
 
 	/** The current color. */
 	private IColor currentColor = GamaColorFactory.getWithDoubles(1, 1, 1, 1);
@@ -232,10 +234,17 @@ public class OpenGL extends AbstractRendererHelper {
 	protected volatile boolean objectIsWireframe;
 
 	/**
-	 * Tessellation helper for triangulating concave polygons and polygons with holes.
-	 * Uses FastTriangulation pure-Java ear-clipping instead of the JOGL GLU tessellator.
+	 * The GLU tessellator object used to triangulate concave polygons and polygons with holes. Wired to the
+	 * {@link ITesselator} callbacks implemented by this class so that tessellated vertices are written directly into the
+	 * VBO float buffers rather than via deprecated {@code glVertex} calls.
 	 */
-	// GLUtessellatorImpl removed — tessellation now uses FastTriangulation
+	final GLUtessellatorImpl tobj = (GLUtessellatorImpl) GLU.gluNewTess();
+
+	/**
+	 * Visitor lambda that feeds each coordinate from an {@link gama.api.utils.geometry.ICoordinates} ring into the GLU
+	 * tessellator via {@code gluTessVertex}.
+	 */
+	final VertexVisitor glTesselatorDrawer;
 
 	/** The ratios. */
 	// World
@@ -271,7 +280,13 @@ public class OpenGL extends AbstractRendererHelper {
 	 */
 	public OpenGL(final IOpenGLRenderer renderer) {
 		super(renderer);
+		glu = new GLU();
 		geometryCache = new GeometryCache(renderer);
+		glTesselatorDrawer = (final double[] ordinates) -> { tobj.gluTessVertex(ordinates, 0, ordinates); };
+		GLU.gluTessCallback(tobj, GLU.GLU_TESS_VERTEX, this);
+		GLU.gluTessCallback(tobj, GLU.GLU_TESS_BEGIN, this);
+		GLU.gluTessCallback(tobj, GLU.GLU_TESS_END, this);
+		GLU.gluTessProperty(tobj, GLU.GLU_TESS_TOLERANCE, 0.1);
 		TextDrawer td = new TextDrawer(this);
 		var gd = new GeometryDrawer(this);
 		var rd = new ResourceDrawer(this);
@@ -285,32 +300,6 @@ public class OpenGL extends AbstractRendererHelper {
 
 	/** The last anti-aliasing setting for optimization. */
 	private boolean lastAntiAliasSetting = false;
-
-	/**
-	 * Pure-Java replacement for GLU.gluProject. Projects object coordinates to window coordinates
-	 * using the supplied model, projection matrices and viewport.
-	 */
-	private static void gluProject(final double objX, final double objY, final double objZ,
-			final double[] model, final int modelOff, final double[] proj, final int projOff,
-			final int[] view, final int viewOff, final double[] winPos) {
-		double x = objX, y = objY, z = objZ;
-		// ModelView transform
-		x = model[0 + modelOff] * objX + model[4 + modelOff] * objY + model[8 + modelOff] * objZ + model[12 + modelOff];
-		y = model[1 + modelOff] * objX + model[5 + modelOff] * objY + model[9 + modelOff] * objZ + model[13 + modelOff];
-		z = model[2 + modelOff] * objX + model[6 + modelOff] * objY + model[10 + modelOff] * objZ + model[14 + modelOff];
-		double w = model[3 + modelOff] * objX + model[7 + modelOff] * objY + model[11 + modelOff] * objZ + model[15 + modelOff];
-		// Projection transform
-		double px = proj[0 + projOff] * x + proj[4 + projOff] * y + proj[8 + projOff] * z + proj[12 + projOff] * w;
-		double py = proj[1 + projOff] * x + proj[5 + projOff] * y + proj[9 + projOff] * z + proj[13 + projOff] * w;
-		double pz = proj[2 + projOff] * x + proj[6 + projOff] * y + proj[10 + projOff] * z + proj[14 + projOff] * w;
-		double pw = proj[3 + projOff] * x + proj[7 + projOff] * y + proj[11 + projOff] * z + proj[15 + projOff] * w;
-		if (pw == 0.0) { winPos[0] = 0; winPos[1] = 0; return; }
-		px /= pw; py /= pw; pz /= pw;
-		// Map to window coordinates
-		winPos[0] = view[0 + viewOff] + view[2 + viewOff] * (px + 1.0) * 0.5;
-		winPos[1] = view[1 + viewOff] + view[3 + viewOff] * (py + 1.0) * 0.5;
-		winPos[2] = (pz + 1.0) * 0.5;
-	}
 
 	/** The gl drawer. */
 	private final ICoordinates.IndexedVisitor glDrawer = this::drawVertex;
@@ -352,19 +341,20 @@ public class OpenGL extends AbstractRendererHelper {
 		for (MeshDrawer md : meshDrawers.values()) { md.dispose(); }
 		geometryCache.dispose();
 		textureCache.dispose();
+		gl = null;
 
 	}
 
-	/**
-	 * Gets the GL4 context — not applicable for GLES20 static calls.
-	 * Retained for API compatibility; callers should migrate to direct GLES20 usage.
-	 */
-	public Object getGL() { return null; }
+	@Override
+	public GL4 getGL() { return gl; }
 
 	/**
-	 * No-op. GLES20 uses static calls — no context instance to store.
+	 * Sets the gl2.
+	 *
+	 * @param gl2
+	 *            the new gl2
 	 */
-	public void setGL4(final Object gl2) { /* no-op */ }
+	public void setGL4(final GL4 gl2) { this.gl = gl2; }
 
 	/**
 	 * Reshapes the GL world to comply with a new view size and computes the resulting ratios between pixels and world
@@ -378,24 +368,29 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the height of the view (in pixels)
 	 * @return
 	 */
-	public void reshape(final int width, final int height) {
+	public void reshape(final GL4 newGL, final int width, final int height) {
+		setGL4(newGL);
 		if (basicShader == null) {
-			basicShader = new BasicShader();
+			basicShader = new BasicShader(newGL);
 			basicShader.start();
 
-			// GLES 2.0 has no VAO — generate VBOs only; vertex attrib arrays are
-			// rebound before each draw call in endDrawing().
-			GLES20.glGenBuffers(4, vboIds, 0);
+			int[] vao = new int[1];
+			newGL.glGenVertexArrays(1, vao, 0);
+			vaoId = vao[0];
+			newGL.glBindVertexArray(vaoId);
+			newGL.glGenBuffers(4, vboIds, 0);
 		}
+		// newGL.glViewport(0, 0, width, height);
 		viewWidth = width;
 		viewHeight = height;
-		resetMatrix(GL_PROJECTION_SENTINEL);
+		resetMatrix(GLMatrixFunc.GL_PROJECTION);
 		updatePerspective();
-		resetMatrix(GL_MODELVIEW_SENTINEL);
+		// Note: updatePerspective() calls animate() and then reads back mvmatrix/projmatrix from our MatrixStacks.
+		// Reset model-view after perspective so gluProject below uses the correct projection.
+		resetMatrix(GLMatrixFunc.GL_MODELVIEW);
 
-		// Replace gluProject with manual matrix multiplication via JOML
 		final double[] pixelSize = new double[4];
-		gluProject(getWorldWidth(), 0, 0, mvmatrix, 0, projmatrix, 0, viewport, 0, pixelSize);
+		glu.gluProject(getWorldWidth(), 0, 0, mvmatrix, 0, projmatrix, 0, viewport, 0, pixelSize, 0);
 		final double initialEnvWidth = pixelSize[0];
 		final double initialEnvHeight = pixelSize[1];
 		final double envWidthInPixels = 2 * pixelSize[0] - width;
@@ -446,8 +441,11 @@ public class OpenGL extends AbstractRendererHelper {
 		DEBUG.OUT("Ratio width/height in pixels ", 35, envWidth / envHeight);
 		DEBUG.OUT("Window pixels/env pixels ", 35, width / envWidth + " | " + height / envHeight);
 		DEBUG.OUT("Current XRatio pixels/env in units ", 35, xRatio + " | " + yRatio);
-		// DPIHelper not available on Android
-		DEBUG.OUT("Window size: " + width + "x" + height);
+		DEBUG.OUT("Device Zoom =  " + DPIHelper.getDeviceZoom(renderer.getCanvas().getMonitor()));
+		DEBUG.OUT("AutoScale down = ", false);
+		DEBUG.OUT(" " + DPIHelper.autoScaleDown(getCanvas().getMonitor(), width) + " "
+				+ DPIHelper.autoScaleDown(getCanvas().getMonitor(), height));
+		// DEBUG.OUT("Client area of window:" + getRenderer().getCanvas().getClientArea());
 	}
 
 	/**
@@ -504,7 +502,7 @@ public class OpenGL extends AbstractRendererHelper {
 		//
 		// translateBy(0d, 0d, maxDim * 0.2);
 		getRenderer().getCameraHelper().animate();
-		GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, viewport, 0);
+		gl.glGetIntegerv(GL.GL_VIEWPORT, viewport, 0);
 		// Read matrices from our own MatrixStack, not from the deprecated GL state
 		// (GL_MODELVIEW_MATRIX / GL_PROJECTION_MATRIX are removed in core GL4).
 		float[] mv = new float[16];
@@ -524,7 +522,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 */
 	public double[] getPixelWidthAndHeightOfWorld() {
 		final double[] coord = new double[4];
-		gluProject(getWorldWidth(), 0, 0, mvmatrix, 0, projmatrix, 0, viewport, 0, coord);
+		glu.gluProject(getWorldWidth(), 0, 0, mvmatrix, 0, projmatrix, 0, viewport, 0, coord, 0);
 		return coord;
 	}
 
@@ -732,26 +730,19 @@ public class OpenGL extends AbstractRendererHelper {
 	private static final int INITIAL_BUFFER_SIZE = 1024 * 64; // 64k floats
 
 	/** The current vertices. */
-	private final FloatBuffer currentVertices = createDirectFloatBuffer(INITIAL_BUFFER_SIZE);
+	private final FloatBuffer currentVertices = Buffers.newDirectFloatBuffer(INITIAL_BUFFER_SIZE);
 
 	/** The current colors. */
-	private final FloatBuffer currentColors = createDirectFloatBuffer(INITIAL_BUFFER_SIZE);
+	private final FloatBuffer currentColors = Buffers.newDirectFloatBuffer(INITIAL_BUFFER_SIZE);
 
 	/** The current tex coords. */
-	private final FloatBuffer currentTexCoords = createDirectFloatBuffer(INITIAL_BUFFER_SIZE);
+	private final FloatBuffer currentTexCoords = Buffers.newDirectFloatBuffer(INITIAL_BUFFER_SIZE);
 
 	/** The current normals (one vec3 per vertex, replicated from the face normal set by {@link #outputNormal}). */
-	private final FloatBuffer currentNormals = createDirectFloatBuffer(INITIAL_BUFFER_SIZE);
-
-	/**
-	 * Creates a direct FloatBuffer on Android (no JOGL Buffers dependency).
-	 */
-	private static FloatBuffer createDirectFloatBuffer(final int capacity) {
-		return ByteBuffer.allocateDirect(capacity * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-	}
+	private final FloatBuffer currentNormals = Buffers.newDirectFloatBuffer(INITIAL_BUFFER_SIZE);
 
 	/** The current draw style. */
-	private int currentDrawStyle = GLES20.GL_TRIANGLES;
+	private int currentDrawStyle = GL4.GL_TRIANGLES;
 
 	/** The current vertex count. */
 	private int currentVertexCount = 0;
@@ -797,55 +788,56 @@ public class OpenGL extends AbstractRendererHelper {
 	 * End drawing.
 	 */
 	public void endDrawing() {
-		if (currentVertices.position() == 0 || basicShader == null || vboIds[0] == 0) return;
+		if (currentVertices.position() == 0 || basicShader == null || vaoId < 0) return;
 		basicShader.start();
+		gl.glBindVertexArray(vaoId);
 
 		// --- vertices (location 0) ---
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[0]);
+		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[0]);
 		currentVertices.flip();
-		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, currentVertices.limit() * 4, currentVertices, GLES20.GL_DYNAMIC_DRAW);
-		GLES20.glVertexAttribPointer(0, 3, GLES20.GL_FLOAT, false, 0, 0);
-		GLES20.glEnableVertexAttribArray(0);
+		gl.glBufferData(GL.GL_ARRAY_BUFFER, (long) currentVertices.limit() * 4, currentVertices, GL.GL_DYNAMIC_DRAW);
+		gl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+		gl.glEnableVertexAttribArray(0);
 
 		// --- colors (location 1) ---
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[1]);
+		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[1]);
 		currentColors.flip();
-		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, currentColors.limit() * 4, currentColors, GLES20.GL_DYNAMIC_DRAW);
-		GLES20.glVertexAttribPointer(1, 4, GLES20.GL_FLOAT, false, 0, 0);
-		GLES20.glEnableVertexAttribArray(1);
+		gl.glBufferData(GL.GL_ARRAY_BUFFER, (long) currentColors.limit() * 4, currentColors, GL.GL_DYNAMIC_DRAW);
+		gl.glVertexAttribPointer(1, 4, GL.GL_FLOAT, false, 0, 0);
+		gl.glEnableVertexAttribArray(1);
 
 		// --- tex coords (location 2) ---
 		boolean hasTex = currentTexCoords.position() > 0;
 		if (hasTex) {
-			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[2]);
+			gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[2]);
 			currentTexCoords.flip();
-			GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, currentTexCoords.limit() * 4, currentTexCoords,
-					GLES20.GL_DYNAMIC_DRAW);
-			GLES20.glVertexAttribPointer(2, 2, GLES20.GL_FLOAT, false, 0, 0);
-			GLES20.glEnableVertexAttribArray(2);
+			gl.glBufferData(GL.GL_ARRAY_BUFFER, (long) currentTexCoords.limit() * 4, currentTexCoords,
+					GL.GL_DYNAMIC_DRAW);
+			gl.glVertexAttribPointer(2, 2, GL.GL_FLOAT, false, 0, 0);
+			gl.glEnableVertexAttribArray(2);
 		} else {
-			GLES20.glDisableVertexAttribArray(2);
+			gl.glDisableVertexAttribArray(2);
 		}
 
 		// --- normals (location 3) ---
 		boolean hasNormals = currentNormals.position() > 0 && getLighting();
 		if (hasNormals) {
-			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[3]);
+			gl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[3]);
 			currentNormals.flip();
-			GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, currentNormals.limit() * 4, currentNormals,
-					GLES20.GL_DYNAMIC_DRAW);
-			GLES20.glVertexAttribPointer(3, 3, GLES20.GL_FLOAT, false, 0, 0);
-			GLES20.glEnableVertexAttribArray(3);
+			gl.glBufferData(GL.GL_ARRAY_BUFFER, (long) currentNormals.limit() * 4, currentNormals,
+					GL.GL_DYNAMIC_DRAW);
+			gl.glVertexAttribPointer(3, 3, GL.GL_FLOAT, false, 0, 0);
+			gl.glEnableVertexAttribArray(3);
 		} else {
-			GLES20.glDisableVertexAttribArray(3);
+			gl.glDisableVertexAttribArray(3);
 			// Provide a default up-facing normal so the shader doesn't read garbage
-			GLES20.glVertexAttrib3f(3, 0.0f, 0.0f, 1.0f);
+			gl.glVertexAttrib3f(3, 0.0f, 0.0f, 1.0f);
 		}
 
 		basicShader.loadModelMatrix(modelViewMatrix.getCurrentMatrix());
+		// Pass the projection matrix; the model-view matrix already contains camera+model transforms.
 		basicShader.loadViewMatrix(new org.joml.Matrix4f().identity());
 		basicShader.loadProjectionMatrix(projectionMatrix.getCurrentMatrix());
-		basicShader.loadNormalMatrix(modelViewMatrix.getCurrentMatrix());
 		basicShader.loadUseTexture(hasTex);
 
 		// --- lighting uniforms ---
@@ -854,20 +846,22 @@ public class OpenGL extends AbstractRendererHelper {
 		basicShader.loadViewPos((float) camPos.getX(), (float) -camPos.getY(), (float) camPos.getZ());
 		basicShader.loadShininess(32.0f);
 
-		GLES20.glEnable(GLES20.GL_BLEND);
+		// Enable blending so that the alpha written into per-vertex colours (including
+		// layer/object alpha and per-color transparency) is actually respected by the
+		// hardware compositing stage. Use standard src-alpha blending; for pre-multiplied
+		// textures beginObject overrides this to GL_ONE / GL_ONE_MINUS_SRC_ALPHA.
+		gl.glEnable(GL.GL_BLEND);
+		// For transparent draws, disable depth-buffer writes so that objects behind a
+		// semi-transparent surface remain visible (depth *testing* is kept on).
 		boolean transparent = currentObjectAlpha < 1.0 || (currentColor != null && currentColor.alpha() < 255);
-		if (transparent) { GLES20.glDepthMask(false); }
+		if (transparent) { gl.glDepthMask(false); }
 
-		GLES20.glDrawArrays(currentDrawStyle, 0, currentVertices.limit() / 3);
+		gl.glDrawArrays(currentDrawStyle, 0, currentVertices.limit() / 3);
 
-		if (transparent) { GLES20.glDepthMask(true); }
+		if (transparent) { gl.glDepthMask(true); }
 
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-		// No VAO to unbind in GLES 2.0 — just disable attrib arrays after draw
-		GLES20.glDisableVertexAttribArray(0);
-		GLES20.glDisableVertexAttribArray(1);
-		if (hasTex) GLES20.glDisableVertexAttribArray(2);
-		if (hasNormals) GLES20.glDisableVertexAttribArray(3);
+		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, 0);
+		gl.glBindVertexArray(0);
 		basicShader.stop();
 	}
 
@@ -1006,7 +1000,7 @@ public class OpenGL extends AbstractRendererHelper {
 			final boolean computeNormal, final IColor border) {
 		if (!isWireframe()) {
 			if (computeNormal) { setNormal(yNegatedVertices, clockwise); }
-			final int style = number == 4 ? GLES20.GL_TRIANGLE_FAN : number == -1 ? GLES20.GL_TRIANGLE_FAN : GLES20.GL_TRIANGLES;
+			final int style = number == 4 ? GL.GL_TRIANGLE_FAN : number == -1 ? GL.GL_TRIANGLE_FAN : GL.GL_TRIANGLES;
 			drawVertices(style, yNegatedVertices, number, clockwise);
 		}
 		if (border != null || isWireframe()) {
@@ -1041,40 +1035,16 @@ public class OpenGL extends AbstractRendererHelper {
 	 */
 	public void drawPolygon(final Polygon p, final ICoordinates yNegatedVertices, final boolean clockwise) {
 		setNormal(yNegatedVertices, clockwise);
-		// Build outer ring as flat double[] for FastTriangulation
-		final int outerCount = yNegatedVertices.size();
-		final double[] outerRing = new double[outerCount * 2];
-		yNegatedVertices.visitClockwise((final double... coords) -> {
-			final int idx = (int) coords[0];
-			outerRing[idx * 2] = coords[1];
-			outerRing[idx * 2 + 1] = coords[2];
+		GLU.gluTessBeginPolygon(tobj, null);
+		GLU.gluTessBeginContour(tobj);
+		yNegatedVertices.visitClockwise(glTesselatorDrawer);
+		GLU.gluTessEndContour(tobj);
+		GeometryUtils.applyToInnerGeometries(p, geom -> {
+			GLU.gluTessBeginContour(tobj);
+			GamaCoordinateSequenceFactory.pointsOf(geom).visitYNegatedCounterClockwise(glTesselatorDrawer);
+			GLU.gluTessEndContour(tobj);
 		});
-		// Collect hole rings
-		final int holeCount = p.getNumInteriorRing();
-		final double[][] holes = new double[holeCount][];
-		for (int h = 0; h < holeCount; h++) {
-			final int holeIndex = h;
-			final var holeRing = GamaCoordinateSequenceFactory.pointsOf(p.getInteriorRingN(h));
-			final int holeCount2 = holeRing.size();
-			holes[h] = new double[holeCount2 * 2];
-			holeRing.visitYNegatedCounterClockwise((final double... coords) -> {
-				final int idx = (int) coords[0];
-				holes[holeIndex][idx * 2] = coords[1];
-				holes[holeIndex][idx * 2 + 1] = coords[2];
-			});
-		}
-		// Triangulate using FastTriangulation
-		final int[] triIndices = FastTriangulation.triangulate(outerRing, holes, outerCount);
-		// Emit triangles via beginDrawing/drawVertex/endDrawing
-		beginDrawing(GLES20.GL_TRIANGLES);
-		final boolean hasNormals = getLighting();
-		for (int i = 0; i < triIndices.length; i += 3) {
-			final int i0 = triIndices[i], i1 = triIndices[i + 1], i2 = triIndices[i + 2];
-			drawVertex(0, outerRing[i0 * 2], outerRing[i0 * 2 + 1], 0);
-			drawVertex(0, outerRing[i1 * 2], outerRing[i1 * 2 + 1], 0);
-			drawVertex(0, outerRing[i2 * 2], outerRing[i2 * 2 + 1], 0);
-		}
-		endDrawing();
+		GLU.gluTessEndPolygon(tobj);
 	}
 
 	/**
@@ -1086,7 +1056,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the number
 	 */
 	public void drawClosedLine(final ICoordinates yNegatedVertices, final int number) {
-		drawVertices(GLES20.GL_LINE_LOOP, yNegatedVertices, number, true);
+		drawVertices(GL.GL_LINE_LOOP, yNegatedVertices, number, true);
 	}
 
 	/**
@@ -1116,7 +1086,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 */
 	public void drawLine(final ICoordinates yNegatedVertices, final int number) {
 		// final boolean previous = this.setLighting(false);
-		drawVertices(GLES20.GL_LINE_STRIP, yNegatedVertices, number, true);
+		drawVertices(GL.GL_LINE_STRIP, yNegatedVertices, number, true);
 		// this.setLighting(previous);
 	}
 
@@ -1360,7 +1330,7 @@ public class OpenGL extends AbstractRendererHelper {
 		float previous = currentObjectLineWidth;
 		if (width != currentObjectLineWidth) {
 			currentObjectLineWidth = width;
-			GLES20.glLineWidth(width);
+			gl.glLineWidth(width);
 		}
 		return previous;
 	}
@@ -1403,15 +1373,15 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the texture
 	 */
 	public void bindTexture(final int texture) {
-		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture);
+		gl.glBindTexture(GL.GL_TEXTURE_2D, texture);
 		boolean isAntiAlias = getData().isAntialias();
 		if (texture == lastBoundTexture && isAntiAlias == lastAntiAliasSetting) return;
 
 		lastBoundTexture = texture;
 		lastAntiAliasSetting = isAntiAlias;
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, isAntiAlias ? GLES20.GL_LINEAR : GLES20.GL_NEAREST);
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, isAntiAlias ? GLES20.GL_LINEAR : GLES20.GL_NEAREST);
-		GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, 0x84FE, isAntiAlias ? ANISOTROPIC_LEVEL : 0);
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, isAntiAlias ? GL.GL_LINEAR : GL.GL_NEAREST);
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, isAntiAlias ? GL.GL_LINEAR : GL.GL_NEAREST);
+		gl.glTexParameterf(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_ANISOTROPY_EXT, isAntiAlias ? ANISOTROPIC_LEVEL : 0);
 	}
 
 	/**
@@ -1435,7 +1405,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 * Disable textures. In core GL4, texturing is disabled by binding texture 0.
 	 */
 	public void disableTextures() {
-		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+		gl.glBindTexture(GL.GL_TEXTURE_2D, 0);
 		textured = false;
 	}
 
@@ -1475,9 +1445,9 @@ public class OpenGL extends AbstractRendererHelper {
 	 * @return the texture id
 	 */
 	public int getTextureId(final IImageProvider file, final boolean useCache) {
-		final int r = textureCache.getTexture(file, file.isAnimated(), useCache);
-		if (r == 0) return NO_TEXTURE;
-		return r;
+		final Texture r = textureCache.getTexture(file, file.isAnimated(), useCache);
+		if (r == null) return NO_TEXTURE;
+		return r.getTextureObject();
 	}
 
 	/**
@@ -1488,9 +1458,9 @@ public class OpenGL extends AbstractRendererHelper {
 	 * @return the texture id
 	 */
 	public int getTextureId(final BufferedImage img) {
-		final int r = textureCache.getTexture(img);
-		if (r == 0) return NO_TEXTURE;
-		return r;
+		final Texture r = textureCache.getTexture(img);
+		if (r == null) return NO_TEXTURE;
+		return r.getTextureObject();
 	}
 
 	/**
@@ -1504,7 +1474,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the use cache
 	 * @return the texture
 	 */
-	public int getTexture(final IImageProvider file, final boolean isAnimated, final boolean useCache) {
+	public Texture getTexture(final IImageProvider file, final boolean isAnimated, final boolean useCache) {
 		return textureCache.getTexture(file, isAnimated, useCache);
 	}
 
@@ -1611,10 +1581,10 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the new polygon mode
 	 */
 	public void updatePolygonMode() {
-		int newPolygonMode = isWireframe() ? GLES20.GL_LINES : GLES20.GL_TRIANGLES;
+		int newPolygonMode = isWireframe() ? GL2GL3.GL_LINE : GL2GL3.GL_FILL;
 		if (newPolygonMode != currentPolygonMode) {
 			currentPolygonMode = newPolygonMode;
-			// GLES20 has no glPolygonMode; wireframe/fill mode is handled via shader
+			gl.glPolygonMode(GL.GL_FRONT_AND_BACK, currentPolygonMode);
 		}
 	}
 
@@ -1790,11 +1760,11 @@ public class OpenGL extends AbstractRendererHelper {
 		// Always enable blending so that alpha (both per-color and layer/object alpha) is
 		// respected. Use pre-multiplied blending for textured objects (textures may already
 		// carry pre-multiplied alpha) and standard src-alpha blending for plain colored ones.
-		GLES20.glEnable(GLES20.GL_BLEND);
+		gl.glEnable(GL.GL_BLEND);
 		if (isTextured()) {
-			GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+			gl.glBlendFunc(GL.GL_ONE, GL.GL_ONE_MINUS_SRC_ALPHA);
 		} else {
-			GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+			gl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 		}
 		// Only set the visual colour when NOT in picking mode; during picking
 		// the colour is the ID-encoded value set by registerForSelection() above.
@@ -1814,7 +1784,7 @@ public class OpenGL extends AbstractRendererHelper {
 	 */
 	public void endObject(final AbstractObject<?, ?> object, final boolean isPicking) {
 		disableTextures();
-		GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+		gl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 		translateByZIncrement();
 		if (object.isFilled() && !object.getAttributes().isSynthetic()) {
 			// removed glTexEnvi
@@ -1835,20 +1805,20 @@ public class OpenGL extends AbstractRendererHelper {
 		previousDisplayLighting = setDisplayLighting(getData().isLightOn());
 		processUnloadedCacheObjects();
 		final IColor backgroundColor = getData().getBackgroundColor();
-		GLES20.glClearColor(backgroundColor.red() / 255.0f, backgroundColor.green() / 255.0f,
+		gl.glClearColor(backgroundColor.red() / 255.0f, backgroundColor.green() / 255.0f,
 				backgroundColor.blue() / 255.0f, 1.0f);
-		GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
-		GLES20.glDepthRangef(0f, 1f);
+		gl.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT | GL.GL_STENCIL_BUFFER_BIT);
+		gl.glClearDepth(1.0f);
 		// Enable blending once for the whole scene with the standard src-alpha equation.
 		// Individual draw calls (beginObject/endDrawing) may override the blend function
 		// for specific cases (e.g. pre-multiplied textures) and must restore it afterwards.
-		GLES20.glEnable(GLES20.GL_BLEND);
-		GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+		gl.glEnable(GL.GL_BLEND);
+		gl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 		// Depth mask on by default; transparent draws will temporarily turn it off.
-		GLES20.glDepthMask(true);
-		resetMatrix(GL_PROJECTION_SENTINEL);
+		gl.glDepthMask(true);
+		resetMatrix(GLMatrixFunc.GL_PROJECTION);
 		updatePerspective();
-		resetMatrix(GL_MODELVIEW_SENTINEL);
+		resetMatrix(GLMatrixFunc.GL_MODELVIEW);
 		// AD removed from here and put in ModelScene.draw() so that it is inside the keystone drawing. See #3285
 		// rotateModel();
 		return endScene;
@@ -1867,7 +1837,7 @@ public class OpenGL extends AbstractRendererHelper {
 		drawRotation(drawRotation);
 		setDisplayLighting(previousDisplayLighting);
 		setDisplayWireframe(previousDisplayWireframe);
-		GLES20.glFinish();
+		gl.glFinish();
 	}
 
 	/**
@@ -1905,28 +1875,42 @@ public class OpenGL extends AbstractRendererHelper {
 	 *            the bg
 	 */
 	public void initializeGLStates(final IColor bg) {
-		GLES20.glClearColor(bg.red() / 255.0f, bg.green() / 255.0f, bg.blue() / 255.0f, 1.0f);
-		GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+		gl.glClearColor(bg.red() / 255.0f, bg.green() / 255.0f, bg.blue() / 255.0f, 1.0f);
+		gl.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT | GL.GL_STENCIL_BUFFER_BIT);
 
+		// Putting the swap interval to 0 (instead of 1) seems to cure some of
+		// the problems of resizing of views.
+		gl.setSwapInterval(0);
+
+		// Enable smooth shading, which blends colors nicely, and smoothes out
+		// lighting.
+		// gl.glShadeModel(GLLightingFunc.GL_SMOOTH);
 		// Enabling the depth buffer & the depth testing
-		GLES20.glDepthRangef(0f, 1f);
-		GLES20.glEnable(GLES20.GL_DEPTH_TEST); // enables depth testing
-		GLES20.glDepthFunc(GLES20.GL_LEQUAL); // the type of depth test to do
+		gl.glClearDepth(1.0f);
+		gl.glEnable(GL.GL_DEPTH_TEST); // enables depth testing
+		gl.glDepthFunc(GL.GL_LEQUAL); // the type of depth test to do
 		// Whether face culling is enabled or not
 		if (GamaPreferences.Displays.ONLY_VISIBLE_FACES.getValue()) {
-			GLES20.glEnable(GLES20.GL_CULL_FACE);
-			GLES20.glCullFace(GLES20.GL_BACK);
+			gl.glEnable(GL.GL_CULL_FACE);
+			gl.glCullFace(GL.GL_BACK);
 		}
 		// Turn on clockwise direction of vertices as an indication of "front" (important)
-		GLES20.glFrontFace(GLES20.GL_CW);
+		gl.glFrontFace(GL.GL_CW);
 
-		// GLES20 has no glHint / GL_LINE_SMOOTH_HINT; line smooth is not available in GLES20.
+		// Hints
+		int hint = getData().isAntialias() ? GL.GL_NICEST : GL.GL_FASTEST;
+		gl.glHint(GL.GL_LINE_SMOOTH_HINT, hint);
+		// GL_TEXTURE_2D enable/disable is not valid in OpenGL 4 core profile; texturing is controlled by shaders.
 		// Blending & alpha control
-		GLES20.glEnable(GLES20.GL_BLEND);
-		GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-		GLES20.glEnable(GLES20.GL_DEPTH_TEST);
-		// GLES20 has no GL_LINE_SMOOTH; line smoothing is not available.
-		// GLES20 has no GL_MULTISAMPLE; multisampling is configured at context creation.
+		gl.glEnable(GL.GL_BLEND);
+		gl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
+		gl.glEnable(GL.GL_DEPTH_TEST);
+		// Disabling line smoothing to only rely on FSAA
+		gl.glEnable(GL.GL_LINE_SMOOTH);
+		// GL_NORMALIZE is a fixed-function lighting constant removed in GL4 core profile; normals are normalized in
+		// shaders.
+		// Enabling multi-sampling
+		gl.glEnable(GL.GL_MULTISAMPLE);
 		// Setting the default polygon mode
 		updatePolygonMode();
 		initializeShapeCache();
@@ -1991,8 +1975,8 @@ public class OpenGL extends AbstractRendererHelper {
 	public void drawFPS(final boolean doIt) {
 		if (doIt) {
 			setCurrentColor(GamaColorFactory.BLACK);
-			// FPS not tracked in the Android stub
-			final String s = "N/A FPS";
+			final int nb = (int) getCanvas().getAnimator().getLastFPS();
+			final String s = nb == 0 ? "(computing FPS...)" : nb + " FPS";
 			drawScreenText(s, new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12), -5, 5);
 		}
 	}

@@ -14,9 +14,9 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Locale;
 
-import android.opengl.GLES20;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import com.jogamp.common.nio.Buffers;
+import com.jogamp.opengl.GL;
+import com.jogamp.opengl.GL4;
 
 import gama.api.types.color.GamaColorFactory;
 import gama.api.types.color.IColor;
@@ -110,6 +110,9 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 	/** The vbo ids. */
 	private int[] vboIds;
 
+	/** The vao id (required in GL4 core profile). */
+	private int[] vaoId;
+
 	/**
 	 * Instantiates a new mesh drawer.
 	 *
@@ -131,8 +134,12 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 		vertexBuffer = normalBuffer = texBuffer = colorBuffer = lineColorBuffer = null;
 		indexBuffer = null;
 		if (vboIds != null) {
-			GLES20.glDeleteBuffers(vboIds.length, vboIds, 0);
+			gl.getGL().glDeleteBuffers(vboIds.length, vboIds, 0);
 			vboIds = null;
+		}
+		if (vaoId != null) {
+			gl.getGL().glDeleteVertexArrays(1, vaoId, 0);
+			vaoId = null;
 		}
 	}
 
@@ -214,14 +221,14 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 			int colors = triangles ? length * 4 : lengthM1 * 16;
 			int points = triangles ? length * 3 : lengthM1 * 12;
 			int textures = triangles ? length * 2 : lengthM1 * 8;
-			vertexBuffer = ByteBuffer.allocateDirect(points * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-			normalBuffer = ByteBuffer.allocateDirect(points * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-			indexBuffer = ByteBuffer.allocateDirect(length * 6 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
+			vertexBuffer = Buffers.newDirectFloatBuffer(points);
+			normalBuffer = Buffers.newDirectFloatBuffer(points);
+			indexBuffer = Buffers.newDirectIntBuffer(length * 6);
 			// AD : fix for #3299. outputsLines and outputsColors can change overtime and it is necessary to maintain
 			// the buffers if the size doesnt change
-			lineColorBuffer = ByteBuffer.allocateDirect(colors * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-			texBuffer = ByteBuffer.allocateDirect(textures * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-			colorBuffer = ByteBuffer.allocateDirect(colors * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+			lineColorBuffer = Buffers.newDirectFloatBuffer(colors);
+			texBuffer = Buffers.newDirectFloatBuffer(textures);
+			colorBuffer = Buffers.newDirectFloatBuffer(colors);
 		} else {
 			vertexBuffer.clear();
 			normalBuffer.clear();
@@ -414,10 +421,11 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 	 */
 	public void drawFieldFallback(final int cols, final int rows) {
 		if (vertexBuffer.limit() == 0) return;
+		final var ogl = gl.getGL();
 		// Forcing alpha
-		GLES20.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
-		GLES20.glBlendFunc(GLES20.GL_CONSTANT_ALPHA, GLES20.GL_ONE_MINUS_CONSTANT_ALPHA);
-		gl.beginDrawing(GLES20.GL_TRIANGLES);
+		ogl.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
+		ogl.glBlendFunc(GL4.GL_CONSTANT_ALPHA, GL4.GL_ONE_MINUS_CONSTANT_ALPHA);
+		gl.beginDrawing(GL.GL_TRIANGLES);
 		for (var index = 0; index < indexBuffer.limit(); index++) {
 			var i = indexBuffer.get(index);
 			int one = i * 3, two = one + 1, three = one + 2;
@@ -447,8 +455,8 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 			gl.setObjectWireframe(previous);
 		}
 		gl.endDrawing();
-		GLES20.glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
-		GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+		ogl.glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
+		ogl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 	}
 
 	/**
@@ -501,56 +509,66 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 			return;
 		}
 		if (vertexBuffer.limit() == 0) return;
+		final var ogl = gl.getGL();
 		// Forcing alpha
-		GLES20.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
-		GLES20.glBlendFunc(GLES20.GL_CONSTANT_ALPHA, GLES20.GL_ONE_MINUS_CONSTANT_ALPHA);
+		ogl.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
+		ogl.glBlendFunc(GL4.GL_CONSTANT_ALPHA, GL4.GL_ONE_MINUS_CONSTANT_ALPHA);
 
-		// VBO + IBO management
+		// VBO + IBO + VAO management (GL4 core: a VAO is required)
 		// vboIds: 0=Vertex, 1=Normal, 2=Tex, 3=Color, 4=LineColor, 5=IndexBuffer(IBO)
 		if (vboIds == null) {
 			vboIds = new int[6];
-			GLES20.glGenBuffers(6, vboIds, 0);
+			ogl.glGenBuffers(6, vboIds, 0);
+		}
+		if (vaoId == null) {
+			vaoId = new int[1];
+			ogl.glGenVertexArrays(1, vaoId, 0);
 		}
 
+		// Bind the VAO so that all subsequent VBO/attrib state is recorded in it
+		ogl.glBindVertexArray(vaoId[0]);
+
 		// Upload vertex data (float)
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[0]);
-		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertexBuffer.limit() * Float.BYTES, vertexBuffer,
-				GLES20.GL_DYNAMIC_DRAW);
-		GLES20.glVertexAttribPointer(0, 3, GLES20.GL_FLOAT, false, 0, 0);
-		GLES20.glEnableVertexAttribArray(0);
+		ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[0]);
+		ogl.glBufferData(GL.GL_ARRAY_BUFFER, (long) vertexBuffer.limit() * Float.BYTES, vertexBuffer,
+				GL.GL_DYNAMIC_DRAW);
+		ogl.glVertexAttribPointer(0, 3, GL.GL_FLOAT, false, 0, 0);
+		ogl.glEnableVertexAttribArray(0);
 
 		// Upload normal data (float) – attribute location 3
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[1]);
-		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, normalBuffer.limit() * Float.BYTES, normalBuffer,
-				GLES20.GL_DYNAMIC_DRAW);
-		GLES20.glVertexAttribPointer(3, 3, GLES20.GL_FLOAT, false, 0, 0);
-		GLES20.glEnableVertexAttribArray(3);
+		ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[1]);
+		ogl.glBufferData(GL.GL_ARRAY_BUFFER, (long) normalBuffer.limit() * Float.BYTES, normalBuffer,
+				GL.GL_DYNAMIC_DRAW);
+		ogl.glVertexAttribPointer(3, 3, GL.GL_FLOAT, false, 0, 0);
+		ogl.glEnableVertexAttribArray(3);
 
 		if (outputsTextures) {
-			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[2]);
-			GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, texBuffer.limit() * Float.BYTES, texBuffer,
-					GLES20.GL_DYNAMIC_DRAW);
-			GLES20.glVertexAttribPointer(2, 2, GLES20.GL_FLOAT, false, 0, 0);
-			GLES20.glEnableVertexAttribArray(2);
+			ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[2]);
+			ogl.glBufferData(GL.GL_ARRAY_BUFFER, (long) texBuffer.limit() * Float.BYTES, texBuffer,
+					GL.GL_DYNAMIC_DRAW);
+			ogl.glVertexAttribPointer(2, 2, GL.GL_FLOAT, false, 0, 0);
+			ogl.glEnableVertexAttribArray(2);
 		} else {
-			GLES20.glDisableVertexAttribArray(2);
+			ogl.glDisableVertexAttribArray(2);
 		}
 
 		if (outputsColors) {
-			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[3]);
-			GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, colorBuffer.limit() * Float.BYTES, colorBuffer,
-					GLES20.GL_DYNAMIC_DRAW);
-			GLES20.glVertexAttribPointer(1, 4, GLES20.GL_FLOAT, false, 0, 0);
-			GLES20.glEnableVertexAttribArray(1);
+			ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[3]);
+			ogl.glBufferData(GL.GL_ARRAY_BUFFER, (long) colorBuffer.limit() * Float.BYTES, colorBuffer,
+					GL.GL_DYNAMIC_DRAW);
+			ogl.glVertexAttribPointer(1, 4, GL.GL_FLOAT, false, 0, 0);
+			ogl.glEnableVertexAttribArray(1);
 		} else {
-			GLES20.glDisableVertexAttribArray(1);
+			ogl.glDisableVertexAttribArray(1);
+			// Provide a white default color so geometry is visible
+			ogl.glVertexAttrib4f(1, 1.0f, 1.0f, 1.0f, 1.0f);
 		}
 
-		// Upload index data to the element-array buffer
+		// Upload index data to the element-array buffer (stays bound in the VAO)
 		indexBuffer.rewind();
-		GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, vboIds[5]);
-		GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.limit() * Integer.BYTES, indexBuffer,
-				GLES20.GL_DYNAMIC_DRAW);
+		ogl.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, vboIds[5]);
+		ogl.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, (long) indexBuffer.limit() * Integer.BYTES, indexBuffer,
+				GL.GL_DYNAMIC_DRAW);
 
 		// Push matrices and lighting to the shader
 		var shader = gl.getBasicShader();
@@ -571,31 +589,32 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 
 		try {
 			if (!gl.isWireframe()) {
-				GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexBuffer.limit(), GLES20.GL_UNSIGNED_INT, 0);
+				ogl.glDrawElements(GL.GL_TRIANGLES, indexBuffer.limit(), GL.GL_UNSIGNED_INT, 0L);
 			}
 			if (outputsLines) {
 				// Switch attribute 1 to the line-color buffer
 				if (vboIds[4] != 0) {
-					GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboIds[4]);
-					GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, lineColorBuffer.limit() * Float.BYTES, lineColorBuffer,
-							GLES20.GL_DYNAMIC_DRAW);
-					GLES20.glVertexAttribPointer(1, 4, GLES20.GL_FLOAT, false, 0, 0);
-					GLES20.glEnableVertexAttribArray(1);
+					ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, vboIds[4]);
+					ogl.glBufferData(GL.GL_ARRAY_BUFFER, (long) lineColorBuffer.limit() * Float.BYTES, lineColorBuffer,
+							GL.GL_DYNAMIC_DRAW);
+					ogl.glVertexAttribPointer(1, 4, GL.GL_FLOAT, false, 0, 0);
+					ogl.glEnableVertexAttribArray(1);
 				}
 				boolean previous = gl.setObjectWireframe(true);
-				GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexBuffer.limit(), GLES20.GL_UNSIGNED_INT, 0);
+				ogl.glDrawElements(GL.GL_TRIANGLES, indexBuffer.limit(), GL.GL_UNSIGNED_INT, 0L);
 				gl.setObjectWireframe(previous);
 			}
 		} finally {
-			GLES20.glDisableVertexAttribArray(0);
-			GLES20.glDisableVertexAttribArray(1);
-			GLES20.glDisableVertexAttribArray(2);
-			GLES20.glDisableVertexAttribArray(3);
-			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+			ogl.glDisableVertexAttribArray(0);
+			ogl.glDisableVertexAttribArray(1);
+			ogl.glDisableVertexAttribArray(2);
+			ogl.glDisableVertexAttribArray(3);
+			ogl.glBindBuffer(GL.GL_ARRAY_BUFFER, 0);
+			ogl.glBindVertexArray(0);
 			if (shader != null) { shader.stop(); }
 			// Putting back alpha to normal
-			GLES20.glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
-			GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+			ogl.glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
+			ogl.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 		}
 	}
 
@@ -621,7 +640,7 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 				coords[c + 2] = gridValue;
 			}
 		}
-		// GLUT bitmap strings (glBitmap / glRasterPos3d) are not available in GLES20.
+		// GLUT bitmap strings (glBitmap / glRasterPos3d) are not available in GL4 core profile.
 		// Mesh value labels are therefore not rendered in this implementation.
 		// To display labels, use a TextDrawer-based approach with isPerspective=true.
 	}

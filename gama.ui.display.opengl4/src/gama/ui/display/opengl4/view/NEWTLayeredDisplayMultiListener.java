@@ -10,17 +10,49 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.view;
 
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+import com.jogamp.newt.Window;
+import com.jogamp.newt.event.KeyEvent;
+import com.jogamp.newt.event.KeyListener;
+import com.jogamp.newt.event.MouseEvent;
+import com.jogamp.newt.event.MouseListener;
+import com.jogamp.newt.event.WindowEvent;
+import com.jogamp.newt.event.WindowListener;
+import com.jogamp.newt.event.WindowUpdateEvent;
+
+import gama.api.runtime.SystemInfo;
 import gama.api.ui.displays.IDisplaySurface;
+import gama.api.ui.layers.IEventLayerListener;
 import gama.api.utils.interfaces.IDisposable;
 import gama.dev.DEBUG;
 import gama.ui.experiment.views.displays.LayeredDisplayDecorator;
 import gama.ui.experiment.views.displays.LayeredDisplayMultiListener;
 
 /**
- * A listener for NEWT events — Android no-op stub.
- * On Android, input events are handled by the Android framework directly.
+ * A listener for NEWT events
+ *
  */
-public class NEWTLayeredDisplayMultiListener implements IDisposable {
+public class NEWTLayeredDisplayMultiListener implements MouseListener, KeyListener, WindowListener, IDisposable {
+	private int mapKeyCodeToEventAction(int keyCode) {
+		return switch (keyCode) {
+			case KeyEvent.VK_UP -> IEventLayerListener.ARROW_UP;
+			case KeyEvent.VK_DOWN -> IEventLayerListener.ARROW_DOWN;
+			case KeyEvent.VK_LEFT -> IEventLayerListener.ARROW_LEFT;
+			case KeyEvent.VK_RIGHT -> IEventLayerListener.ARROW_RIGHT;
+			case KeyEvent.VK_PAGE_UP -> IEventLayerListener.KEY_PAGE_UP;
+			case KeyEvent.VK_PAGE_DOWN -> IEventLayerListener.KEY_PAGE_DOWN;
+			case KeyEvent.VK_ESCAPE -> IEventLayerListener.KEY_ESC;
+			case KeyEvent.VK_ENTER -> IEventLayerListener.KEY_RETURN;
+			case KeyEvent.VK_TAB -> IEventLayerListener.KEY_TAB;
+			case KeyEvent.VK_SHIFT -> IEventLayerListener.KEY_SHIFT;
+			case KeyEvent.VK_ALT -> IEventLayerListener.KEY_ALT;
+			case KeyEvent.VK_CONTROL -> IEventLayerListener.KEY_CTRL;
+			case KeyEvent.VK_META -> IEventLayerListener.KEY_CMD;
+			default -> 0;
+		};
+	}
 
 	static {
 		DEBUG.OFF();
@@ -29,6 +61,18 @@ public class NEWTLayeredDisplayMultiListener implements IDisposable {
 	/** The delegate. */
 	final LayeredDisplayMultiListener delegate;
 
+	/** The control. */
+	final Window control;
+
+	/** The ok. */
+	final Supplier<Boolean> ok;
+
+	/** The key listener. */
+	final Consumer<Short> keyListenerForWindows;
+
+	/** The key listener for mac and linux. */
+	final Consumer<Character> keyListenerForMac;
+
 	/**
 	 * Instantiates a new NEWT layered display multi listener.
 	 *
@@ -36,10 +80,51 @@ public class NEWTLayeredDisplayMultiListener implements IDisposable {
 	 *            the deco
 	 * @param surface
 	 *            the surface
+	 * @param window
+	 *            the window
 	 */
-	public NEWTLayeredDisplayMultiListener(final LayeredDisplayDecorator deco, final IDisplaySurface surface) {
+	public NEWTLayeredDisplayMultiListener(final LayeredDisplayDecorator deco, final IDisplaySurface surface,
+			final Window window) {
+
 		delegate = new LayeredDisplayMultiListener(surface, deco);
-		DEBUG.OUT("NEWTLayeredDisplayMultiListener: initialized as Android stub");
+		control = window;
+
+		ok = () -> {
+			final boolean viewOk = deco.view != null && !deco.view.disposed;
+			if (!viewOk) return false;
+			final boolean controlOk = control != null;
+			if (!controlOk) return false;
+			return surface != null && !surface.isDisposed();
+		};
+
+		keyListenerForMac = keyCode -> {
+			switch (keyCode) {
+				case 'o':
+				case 'O':
+					deco.toggleOverlay();
+					break;
+				case 't':
+				case 'T':
+					deco.toggleToolbar();
+			}
+		};
+
+		keyListenerForWindows = code -> {
+			switch (code) {
+				// "o"
+				case 0x4f:
+					deco.toggleOverlay();
+					break;
+				// "t"
+				case 0x54:
+					deco.toggleToolbar();
+					break;
+			}
+		};
+
+		control.addKeyListener(this);
+		control.addMouseListener(this);
+		control.addWindowListener(this);
 	}
 
 	/**
@@ -47,59 +132,139 @@ public class NEWTLayeredDisplayMultiListener implements IDisposable {
 	 */
 	@Override
 	public void dispose() {
-		DEBUG.OUT("NEWTLayeredDisplayMultiListener: dispose (no-op on Android)");
+		control.removeKeyListener(this);
+		control.removeMouseListener(this);
+		control.removeWindowListener(this);
 	}
 
-	// ---- Android input stubs: forward raw values to delegate ----
-
-	public void keyPressed(final int keyCode, final char keyChar, final boolean isControlDown,
-			final boolean isShiftDown, final boolean isMetaDown) {
-		if (!isControlDown && !isShiftDown && !isMetaDown && keyChar != 0) {
-			delegate.keyPressed(keyChar);
+	@Override
+	public void keyPressed(final KeyEvent e) {
+		DEBUG.OUT("Key pressed in Newt listener: " + e);
+		if (!ok.get()) return;
+		// Bug on Windows : the character returned contains the modifiers despite the documentation saying the contrary
+		boolean isPrintable = SystemInfo.isWindows() || SystemInfo.isLinux()
+				? KeyEvent.isPrintableKey(e.getKeySymbol(), true) : e.isPrintableKey();
+		boolean isCommand = SystemInfo.isMac() ? e.isMetaDown() : e.isControlDown();
+		if (isPrintable) {
+			if (isCommand) {
+				if (SystemInfo.isWindows() || SystemInfo.isLinux()) {
+					keyListenerForWindows.accept(e.getKeySymbol());
+				} else {
+					keyListenerForMac.accept(e.getKeyChar());
+				}
+			} else {
+				delegate.keyPressed(e.getKeyChar());
+			}
+		} else if (e.getModifiers() == 0
+				|| e.isAutoRepeat() && !e.isAltDown() && !e.isControlDown() && !e.isShiftDown() && !e.isMetaDown()) {
+			delegate.specialKeyPressed(mapKeyCodeToEventAction(e.getKeyCode()));
 		}
 	}
 
-	public void keyReleased(final int keyCode, final char keyChar, final boolean isControlDown,
-			final boolean isShiftDown, final boolean isMetaDown) {
-		if (!isControlDown && !isShiftDown && !isMetaDown && keyChar != 0) {
-			delegate.keyReleased(keyChar);
+	@Override
+	public void keyReleased(final KeyEvent e) {
+		if (e.isAutoRepeat()) return;
+		DEBUG.OUT("Key released in Newt listener: " + e);
+		if (!ok.get()) return;
+		boolean isPrintable = SystemInfo.isWindows() || SystemInfo.isLinux()
+				? KeyEvent.isPrintableKey(e.getKeySymbol(), true) : e.isPrintableKey();
+		boolean isCommand = SystemInfo.isMac() ? e.isMetaDown() : e.isControlDown();
+		if (isPrintable && !isCommand) {
+			delegate.keyReleased(e.getKeyChar());
+		} else if (e.getModifiers() == 0
+				|| e.isAutoRepeat() && !e.isAltDown() && !e.isControlDown() && !e.isShiftDown() && !e.isMetaDown()) {
+			delegate.specialKeyReleased(mapKeyCodeToEventAction(e.getKeyCode()));
 		}
 	}
 
-	public void mouseEntered(final int x, final int y) {
-		delegate.mouseEnter(x, y, false, 0);
+	/**
+	 * Checks for modifiers.
+	 *
+	 * @param e
+	 *            the e
+	 * @return true, if successful
+	 */
+	private boolean hasModifiers(final MouseEvent e) {
+		return e.isAltDown() || e.isAltGraphDown() || e.isControlDown() || e.isMetaDown() || e.isShiftDown();
 	}
 
-	public void mouseExited(final int x, final int y) {
-		delegate.mouseExit(x, y, false, 0);
+	@Override
+	public void mouseEntered(final MouseEvent e) {
+		if (!ok.get()) return;
+		delegate.mouseEnter(e.getX(), e.getY(), hasModifiers(e), e.getButton());
 	}
 
-	public void mouseMoved(final int x, final int y) {
-		delegate.mouseMove(x, y, false);
+	@Override
+	public void mouseExited(final MouseEvent e) {
+		if (!ok.get()) return;
+		delegate.mouseExit(e.getX(), e.getY(), hasModifiers(e), e.getButton());
 	}
 
-	public void mousePressed(final int x, final int y, final int button) {
-		if (button == 3) {
-			delegate.menuDetected(x, y);
+	@Override
+	public void mouseMoved(final MouseEvent e) {
+		if (!ok.get()) return;
+		delegate.mouseMove(e.getX(), e.getY(), hasModifiers(e));
+	}
+
+	@Override
+	public void mousePressed(final MouseEvent e) {
+		if (!ok.get()) return;
+		// DEBUG.OUT("Mouse pressed with button " + e.getButton() + " modifiers " + e.getModifiersString(null));
+		if (e.getButton() == 3 || e.isControlDown()) {
+			delegate.menuDetected(e.getX(), e.getY());
 		} else {
-			delegate.mouseDown(x, y, button, false);
+			delegate.mouseDown(e.getX(), e.getY(), e.getButton(), hasModifiers(e));
 		}
 	}
 
-	public void mouseReleased(final int x, final int y, final int button) {
-		delegate.mouseUp(x, y, button, false);
+	@Override
+	public void mouseReleased(final MouseEvent e) {
+		if (!ok.get()) return;
+		delegate.mouseUp(e.getX(), e.getY(), e.getButton(), hasModifiers(e));
 	}
 
-	public void mouseDragged(final int x, final int y) {
-		delegate.dragDetected(x, y);
+	@Override
+	public void mouseDragged(final MouseEvent e) {
+		if (!ok.get()) return;
+		delegate.dragDetected(e.getX(), e.getY());
 	}
 
-	public void focusGained() {
+	@Override
+	public void windowResized(final WindowEvent e) {}
+
+	@Override
+	public void windowMoved(final WindowEvent e) {}
+
+	@Override
+	public void windowDestroyNotify(final WindowEvent e) {}
+
+	@Override
+	public void windowDestroyed(final WindowEvent e) {}
+
+	@Override
+	public void windowGainedFocus(final WindowEvent e) {
+		if (!ok.get()) return;
 		delegate.focusGained();
 	}
 
-	public void focusLost() {
+	@Override
+	public void windowLostFocus(final WindowEvent e) {
+		if (!ok.get()) return;
 		delegate.focusLost();
+
+	}
+
+	@Override
+	public void windowRepaint(final WindowUpdateEvent e) {}
+
+	@Override
+	public void mouseClicked(final MouseEvent e) {
+		this.mouseReleased(e);
+	}
+
+	@Override
+	public void mouseWheelMoved(final MouseEvent e) {
+		this.mouseMoved(e);
 	}
 
 }

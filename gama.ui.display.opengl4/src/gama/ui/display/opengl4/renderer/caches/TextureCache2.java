@@ -13,16 +13,18 @@ package gama.ui.display.opengl4.renderer.caches;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import android.opengl.GLES20;
-
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.jogamp.common.nio.Buffers;
+import com.jogamp.opengl.GL;
+import com.jogamp.opengl.GLProfile;
+import com.jogamp.opengl.util.texture.Texture;
+import com.jogamp.opengl.util.texture.TextureData;
 
 import gama.api.utils.interfaces.IImageProvider;
 import gama.api.utils.prefs.GamaPreferences;
@@ -39,10 +41,10 @@ public class TextureCache2 implements ITextureCache {
 	}
 
 	/** The volatile textures. */
-	private final Map<String, Integer> volatileTextures = new ConcurrentHashMap<>();
+	private final Map<String, Texture> volatileTextures = new ConcurrentHashMap<>();
 
 	/** The static textures. */
-	private final Cache<String, Integer> staticTextures =
+	private final Cache<String, Texture> staticTextures =
 			CacheBuilder.newBuilder().expireAfterAccess(10, TimeUnit.SECONDS).build();
 
 	/** The textures to process. */
@@ -71,10 +73,7 @@ public class TextureCache2 implements ITextureCache {
 	 */
 	@Override
 	public void deleteVolatileTextures() {
-		for (Map.Entry<String, Integer> entry : volatileTextures.entrySet()) {
-			int textureId = entry.getValue();
-			GLES20.glDeleteTextures(1, new int[]{textureId}, 0);
-		}
+		for (Map.Entry<String, Texture> entry : volatileTextures.entrySet()) { entry.getValue().destroy(gl.getGL()); }
 		volatileTextures.clear();
 	}
 
@@ -87,9 +86,7 @@ public class TextureCache2 implements ITextureCache {
 	public void dispose() {
 		DEBUG.OUT("TextureCache disposed");
 		deleteVolatileTextures();
-		staticTextures.asMap().forEach((s, textureId) -> {
-			GLES20.glDeleteTextures(1, new int[]{textureId}, 0);
-		});
+		staticTextures.asMap().forEach((s, t) -> { t.destroy(gl.getGL()); });
 		staticTextures.invalidateAll();
 		staticTextures.cleanUp();
 	}
@@ -130,17 +127,17 @@ public class TextureCache2 implements ITextureCache {
 	 * @see gama.ui.display.opengl4.renderer.caches.ITextureCache#getTexture(java.awt.image.BufferedImage)
 	 */
 	@Override
-	public int getTexture(final BufferedImage img) {
+	public Texture getTexture(final BufferedImage img) {
 		// BufferedImage objects are reused across simulation steps (same object identity /
 		// hashCode) while their pixel data is updated in-place each step via System.arraycopy.
 		// Caching by identity hash would return a stale GPU texture after the first step.
 		// Always destroy any previously-cached texture for this image and rebuild from the
 		// current pixel data so the GPU sees the up-to-date content every frame.
 		String id = String.valueOf(img.hashCode());
-		Integer old = volatileTextures.remove(id);
-		if (old != null) { GLES20.glDeleteTextures(1, new int[]{old}, 0); }
-		int texture = this.buildTexture(gl.getGL(), img);
-		if (texture != 0) { volatileTextures.put(id, texture); }
+		Texture old = volatileTextures.remove(id);
+		if (old != null) { old.destroy(gl.getGL()); }
+		Texture texture = this.buildTexture(gl.getGL(), img);
+		if (texture != null) { volatileTextures.put(id, texture); }
 		gl.invalidateTextureCache();
 		return texture;
 	}
@@ -157,22 +154,21 @@ public class TextureCache2 implements ITextureCache {
 	 * @return the texture
 	 */
 	@Override
-	public int getTexture(final IImageProvider file, final boolean isAnimated, final boolean useCache) {
-		if (file == null) return 0;
-		int texture = 0;
+	public Texture getTexture(final IImageProvider file, final boolean isAnimated, final boolean useCache) {
+		if (file == null) return null;
+		Texture texture = null;
 		if (isAnimated || !useCache) {
 			String path = file.getId();
-			Integer cached = volatileTextures.get(path);
-			if (cached == null) {
+			texture = volatileTextures.get(path);
+			if (texture == null) {
 				final BufferedImage image = file.getImage(null, useCache);
 				DEBUG.LOG("Building a new volatile texture... " + file.getId());
 				texture = this.buildTexture(gl.getGL(), image);
 				volatileTextures.put(path, texture);
-			} else {
-				texture = cached;
 			}
 		} else {
 			try {
+
 				texture = staticTextures.get(file.getId(), () -> buildTexture(gl.getGL(), file));
 			} catch (final ExecutionException e) {
 				e.printStackTrace();
@@ -190,7 +186,7 @@ public class TextureCache2 implements ITextureCache {
 	 *            the file
 	 * @return the texture
 	 */
-	private int buildTexture(final Object gl, final IImageProvider file) {
+	private Texture buildTexture(final GL gl, final IImageProvider file) {
 		return buildTexture(gl, file.getImage(null, GamaPreferences.Displays.OPENGL_USE_IMAGE_CACHE.getValue()));
 	}
 
@@ -203,8 +199,8 @@ public class TextureCache2 implements ITextureCache {
 	 *            the im
 	 * @return the texture
 	 */
-	int buildTexture(final Object gl, final BufferedImage im) {
-		if (im == null) return 0;
+	Texture buildTexture(final GL gl, final BufferedImage im) {
+		if (im == null) return null;
 		try {
 			// Ensure the image is in TYPE_INT_ARGB so we can reliably read ARGB pixels
 			BufferedImage argbImage;
@@ -221,8 +217,9 @@ public class TextureCache2 implements ITextureCache {
 			final int h = argbImage.getHeight();
 			final int[] pixels = argbImage.getRGB(0, 0, w, h, null, 0, w);
 
-			// Convert ARGB int pixels to RGBA byte layout for OpenGL ES 2.0.
-			final ByteBuffer buffer = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+			// Convert ARGB int pixels to RGBA byte layout for OpenGL.
+			// Keep pixels in Java's top-to-bottom order and let TextureData handle the flip.
+			final ByteBuffer buffer = Buffers.newDirectByteBuffer(w * h * 4);
 			for (int y = 0; y < h; y++) {
 				for (int x = 0; x < w; x++) {
 					final int argb = pixels[y * w + x];
@@ -234,27 +231,19 @@ public class TextureCache2 implements ITextureCache {
 			}
 			buffer.flip();
 
-			// Create the OpenGL ES 2.0 texture
-			final int[] textureIds = new int[1];
-			GLES20.glGenTextures(1, textureIds, 0);
-			final int textureId = textureIds[0];
-
-			GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
-			GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-			GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-			GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-			GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-
-			GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0,
-					GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer);
-
-			GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-
-			return textureId;
+			final GLProfile profile = gl.getGLProfile();
+			final TextureData data = new TextureData(profile, GL.GL_RGBA,
+					w, h, 0,
+					GL.GL_RGBA, GL.GL_UNSIGNED_BYTE,
+					false, false, true,
+					buffer, null);
+			final Texture texture = new Texture(gl, data);
+			data.flush();
+			return texture;
 		} catch (final Throwable e) {
 			DEBUG.ERR("TextureCache2.buildTexture failed: " + e.getMessage());
 			e.printStackTrace();
-			return 0;
+			return null;
 		}
 	}
 

@@ -12,7 +12,8 @@ package gama.ui.display.opengl4.files;
 
 import java.io.File;
 
-import android.opengl.GLES20;
+import com.jogamp.opengl.GL;
+import com.jogamp.opengl.util.texture.Texture;
 
 import gama.api.types.geometry.GamaPointFactory;
 import gama.api.types.geometry.IPoint;
@@ -46,7 +47,7 @@ public class ObjFileDrawer {
 	/**
 	 * Handle material loading and texturing
 	 */
-	private static int handleMaterial(GamaObjFile file, OpenGL gl, String nextmatname) {
+	private static Texture handleMaterial(GamaObjFile file, OpenGL gl, String nextmatname) {
 		gl.setCurrentColor(file.materials.getKd(nextmatname)[0], file.materials.getKd(nextmatname)[1],
 				file.materials.getKd(nextmatname)[2], file.materials.getd(nextmatname));
 
@@ -63,15 +64,14 @@ public class ObjFileDrawer {
 			} else if (mapKd != null) { path.append(mapKd); }
 			GamaImageFile asset = new GamaImageFile(null, path.toString());
 			if (asset.exists(null)) {
-				int textureId = gl.getTexture(asset, false, true);
-				gl.setCurrentTextures(textureId, textureId);
-				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
-				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
-				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
-				return textureId;
+				Texture texture = gl.getTexture(asset, false, true);
+				gl.setCurrentTextures(texture.getTextureObject(), texture.getTextureObject());
+				texture.setTexParameteri(gl.getGL(), GL.GL_TEXTURE_WRAP_S, GL.GL_REPEAT);
+				texture.setTexParameteri(gl.getGL(), GL.GL_TEXTURE_WRAP_T, GL.GL_REPEAT);
+				return texture;
 			}
 		}
-		return 0;
+		return null;
 	}
 
 	/**
@@ -82,7 +82,7 @@ public class ObjFileDrawer {
 		final int[] norms = ctx.file.facesNorms.get(faceIndex);
 		final int[] texs = ctx.file.facesTexs.get(faceIndex);
 
-		final int polytype = tempfaces.length == 3 ? GLES20.GL_TRIANGLES : GLES20.GL_TRIANGLE_FAN;
+		final int polytype = tempfaces.length == 3 ? GL.GL_TRIANGLES : GL.GL_TRIANGLE_FAN;
 		ctx.gl.beginDrawing(polytype);
 
 		boolean hasNormals = true;
@@ -148,14 +148,14 @@ public class ObjFileDrawer {
 			nextmatname = nextmatnamearray[0];
 			nextmat = Integer.parseInt(nextmatnamearray[1]);
 		}
-		int texture = 0;
+		Texture texture = null;
 		DrawContext ctx = new DrawContext(file, gl);
 
 		for (int i = 0; i < file.faces.size(); i++) {
 			if (i == nextmat) {
-				if (texture != 0) {
-					GLES20.glDeleteTextures(1, new int[]{texture}, 0);
-					texture = 0;
+				if (texture != null) {
+					texture.destroy(gl.getGL());
+					texture = null;
 				}
 
 				texture = handleMaterial(file, gl, nextmatname);

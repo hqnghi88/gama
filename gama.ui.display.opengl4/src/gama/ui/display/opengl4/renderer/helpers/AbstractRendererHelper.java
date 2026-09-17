@@ -10,6 +10,8 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.helpers;
 
+import com.jogamp.opengl.GL4;
+
 import gama.api.ui.displays.IDisplayData;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
@@ -70,7 +72,7 @@ public abstract class AbstractRendererHelper {
 	 *
 	 * @return the gl
 	 */
-	protected Object getGL() { return renderer.getOpenGLHelper().getGL(); }
+	protected GL4 getGL() { return renderer.getOpenGLHelper().getGL(); }
 
 	/**
 	 * Gets the open GL.
@@ -84,14 +86,14 @@ public abstract class AbstractRendererHelper {
 	 *
 	 * @return the canvas
 	 */
-	protected GamaGLCanvas getCanvas() { return (GamaGLCanvas) renderer.getCanvas(); }
+	protected GamaGLCanvas getCanvas() { return renderer.getCanvas(); }
 
 	/**
 	 * Gets the surface.
 	 *
 	 * @return the surface
 	 */
-	protected SWTOpenGLDisplaySurface getSurface() { return (SWTOpenGLDisplaySurface) renderer.getSurface(); }
+	protected SWTOpenGLDisplaySurface getSurface() { return renderer.getSurface(); }
 
 	/**
 	 * Gets the max env dim.

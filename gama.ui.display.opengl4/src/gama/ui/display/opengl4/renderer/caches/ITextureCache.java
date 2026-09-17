@@ -12,6 +12,8 @@ package gama.ui.display.opengl4.renderer.caches;
 
 import java.awt.image.BufferedImage;
 
+import com.jogamp.opengl.util.texture.Texture;
+
 import gama.api.utils.interfaces.IImageProvider;
 
 /**
@@ -49,7 +51,7 @@ public interface ITextureCache {
 	 *            the img
 	 * @return the texture
 	 */
-	int getTexture(BufferedImage img);
+	Texture getTexture(BufferedImage img);
 
 	/**
 	 * Gets the texture.
@@ -62,6 +64,6 @@ public interface ITextureCache {
 	 *            the use cache
 	 * @return the texture
 	 */
-	int getTexture(IImageProvider id, boolean isAnimated, boolean useCache);
+	Texture getTexture(IImageProvider id, boolean isAnimated, boolean useCache);
 
 }

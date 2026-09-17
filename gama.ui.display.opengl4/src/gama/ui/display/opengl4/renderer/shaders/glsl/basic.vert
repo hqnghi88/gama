@@ -1,21 +1,18 @@
-#version 100
+#version 410 core
 
-precision mediump float;
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec4 aColor;
+layout (location = 2) in vec2 aTexCoord;
+layout (location = 3) in vec3 aNormal;
 
-attribute vec3 aPos;
-attribute vec4 aColor;
-attribute vec2 aTexCoord;
-attribute vec3 aNormal;
-
-varying vec4 vertexColor;
-varying vec2 TexCoord;
-varying vec3 fragNormal;
-varying vec3 fragPos;
+out vec4 vertexColor;
+out vec2 TexCoord;
+out vec3 fragNormal;
+out vec3 fragPos;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform mat3 normalMatrix;  // precomputed on CPU: mat3(transpose(inverse(model)))
 
 void main()
 {
@@ -23,6 +20,8 @@ void main()
     gl_Position = projection * view * worldPos;
     vertexColor = aColor;
     TexCoord = aTexCoord;
-    fragNormal = normalize(normalMatrix * aNormal);
+    // Transform normal into world space using the normal matrix (transpose of inverse of model)
+    // For uniform scaling the model matrix upper-left 3x3 is sufficient.
+    fragNormal = normalize(mat3(transpose(inverse(model))) * aNormal);
     fragPos = vec3(worldPos);
 }
