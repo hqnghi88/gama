@@ -11,55 +11,29 @@
 package gama.ui.display.opengl4.camera;
 
 /**
- * The listener interface for receiving keyboard and mouse events from either SWT or NEWT
- *
- *
+ * The listener interface for receiving keyboard and mouse events.
+ * On Android, input events are forwarded from the Android framework with generic parameters.
  */
-public interface IMultiListener extends
-		/*
-		 * org.eclipse.swt.events.KeyListener, MouseListener, MouseMoveListener, MouseTrackListener, MouseWheelListener,
-		 */ com.jogamp.newt.event.MouseListener, com.jogamp.newt.event.KeyListener {
+public interface IMultiListener {
 
-	// /**
-	// * Method mouseEnter()
-	// *
-	// * @see org.eclipse.swt.events.MouseTrackListener#mouseEnter(org.eclipse.swt.events.MouseEvent)
-	// */
-	// @Override
-	// default void mouseEnter(final org.eclipse.swt.events.MouseEvent e) {}
+	default void mouseEntered(final int x, final int y) {}
 
-	/**
-	 * Mouse entered.
-	 *
-	 * @param e
-	 *            the e
-	 */
-	@Override
-	default void mouseEntered(final com.jogamp.newt.event.MouseEvent e) {}
+	default void mouseExited(final int x, final int y) {}
 
-	// /**
-	// * Method mouseExit()
-	// *
-	// * @see org.eclipse.swt.events.MouseTrackListener#mouseExit(org.eclipse.swt.events.MouseEvent)
-	// */
-	// @Override
-	// default void mouseExit(final org.eclipse.swt.events.MouseEvent e) {}
+	default void mouseMoved(final int x, final int y) {}
 
-	/**
-	 * Mouse exited.
-	 *
-	 * @param e
-	 *            the e
-	 */
-	@Override
-	default void mouseExited(final com.jogamp.newt.event.MouseEvent e) {}
+	default void mouseWheelMoved(final int x, final int y, final int rotation) {}
 
-	// /**
-	// * Method mouseHover()
-	// *
-	// * @see org.eclipse.swt.events.MouseTrackListener#mouseHover(org.eclipse.swt.events.MouseEvent)
-	// */
-	// @Override
-	// default void mouseHover(final org.eclipse.swt.events.MouseEvent e) {}
+	default void mousePressed(final int x, final int y, final int button) {}
+
+	default void mouseReleased(final int x, final int y, final int button) {}
+
+	default void mouseDragged(final int x, final int y) {}
+
+	default void mouseClicked(final int x, final int y, final int clickCount) {}
+
+	default void keyPressed(final int keyCode, final char keyChar) {}
+
+	default void keyReleased(final int keyCode, final char keyChar) {}
 
 }

@@ -16,9 +16,6 @@ import java.util.List;
 
 import org.locationtech.jts.geom.Geometry;
 
-import com.jogamp.opengl.GL4;
-import com.jogamp.opengl.GLAutoDrawable;
-
 import gama.api.GAMA;
 import gama.api.runtime.GeneralSynchronizer;
 import gama.api.types.color.GamaColorFactory;
@@ -47,9 +44,6 @@ import gama.ui.display.opengl4.renderer.helpers.LightHelper;
 import gama.ui.display.opengl4.renderer.helpers.PickingHelper;
 import gama.ui.display.opengl4.renderer.helpers.SceneHelper;
 import gama.ui.display.opengl4.scene.ModelScene;
-import gama.ui.display.opengl4.view.GamaGLCanvas;
-import gama.ui.display.opengl4.view.SWTOpenGLDisplaySurface;
-import gama.ui.shared.utils.DPIHelper;
 import gama.ui.shared.utils.WorkbenchHelper;
 
 /**
@@ -94,8 +88,8 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	protected volatile boolean inited, disposed;
 
 	/** The canvas. */
-	// Canvas
-	protected GamaGLCanvas canvas;
+	// Canvas — typed as Object to avoid SWT/JOGL dependency on Android
+	protected Object canvas;
 
 	/**
 	 * Instantiates a new JOGL renderer.
@@ -120,19 +114,15 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	}
 
 	@Override
-	public void setCanvas(final GamaGLCanvas canvas) {
+	public void setCanvas(final Object canvas) {
 		this.canvas = canvas;
-		canvas.addGLEventListener(this);
 		cameraHelper.hook();
 	}
 
-	@Override
-	public void init(final GLAutoDrawable drawable) {
-		openGL.setGL4(drawable.getGL().getGL4());
+	public void init() {
 		cameraHelper.initialize();
 		openGL.initializeGLStates(data.getBackgroundColor());
 		lightHelper.initialize();
-		// We mark the renderer as inited
 		inited = true;
 	}
 
@@ -142,10 +132,10 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	}
 
 	@Override
-	public SWTOpenGLDisplaySurface getSurface() { return (SWTOpenGLDisplaySurface) surface; }
+	public IDisplaySurface getSurface() { return surface; }
 
 	@Override
-	public final GamaGLCanvas getCanvas() { return canvas; }
+	public final Object getCanvas() { return canvas; }
 
 	@Override
 	public void initScene() {
@@ -172,8 +162,7 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 
 	@Override
 	public boolean isNotReadyToUpdate() {
-		if (super.isNotReadyToUpdate() || !inited || getCanvas() != null && !getCanvas().getVisibleStatus())
-			return true;
+		if (super.isNotReadyToUpdate() || !inited) return true;
 		if (GAMA.isSynchronized()) return false;
 		return sceneHelper.isNotReadyToUpdate();
 	}
@@ -181,7 +170,7 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	@Override
 	public void dispose() {
 		super.dispose();
-		dispose(canvas);
+		disposeGL();
 	}
 
 	@Override
@@ -198,11 +187,12 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	@Override
 	public void endDrawingLayers() {
 		sceneHelper.endUpdatingScene();
-		getSurface().invalidateVisibleRegions();
+		if (getSurface() instanceof gama.ui.display.opengl4.view.SWTOpenGLDisplaySurface swtSurface) {
+			swtSurface.invalidateVisibleRegions();
+		}
 	}
 
-	@Override
-	public void display(final GLAutoDrawable drawable) {
+	public void display() {
 		if (!sceneHelper.isReady()) return;
 
 		try (Pass c = keystoneHelper.render(); Pass d = openGL.beginScene();) {
@@ -263,9 +253,7 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	 */
 	private void flushPendingInitialVisibleRedraw() {
 		if (!pendingInitialVisibleRedraw) return;
-		final GamaGLCanvas currentCanvas = getCanvas();
-		if (currentCanvas == null || !currentCanvas.getVisibleStatus() || openGL.getViewWidth() <= 0
-				|| openGL.getViewHeight() <= 0) {
+		if (openGL.getViewWidth() <= 0 || openGL.getViewHeight() <= 0) {
 			return;
 		}
 		pendingInitialVisibleRedraw = false;
@@ -273,42 +261,25 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 		surface.updateDisplay(true, synchronizer);
 	}
 
-	@Override
-	public void reshape(final GLAutoDrawable drawable, final int arg1, final int arg2, final int w, final int h) {
-		int width = DPIHelper.autoScaleDown(getCanvas().getMonitor(), w),
-				height = DPIHelper.autoScaleDown(getCanvas().getMonitor(), h);
-		// int width = w, height = h;
-		// See #2628 and https://github.com/sgothel/jogl/commit/ca7f0fb61b0a608b6e684a5bbde71f6ecb6e3fe0
-		// width = scaleDownIfMac(width);
-		// height = scaleDownIfMac(height);
+	public void reshape(final int w, final int h) {
+		int width = w, height = h;
 		if (width <= 0 || height <= 0 || openGL.getViewWidth() == width && openGL.getViewHeight() == height) return;
 		final boolean firstMeaningfulReshape = openGL.getViewWidth() <= 0 || openGL.getViewHeight() <= 0;
-		final GL4 gl = drawable.getContext().getGL().getGL4();
 		keystoneHelper.reshape(width, height);
-		openGL.reshape(gl, width, height);
+		openGL.reshape(width, height);
 		if (firstMeaningfulReshape) {
-			if (getCanvas().getVisibleStatus()) {
-				surface.getManager().forceRedrawingLayers();
-			} else {
-				pendingInitialVisibleRedraw = true;
-			}
-		} else if (pendingInitialVisibleRedraw && getCanvas().getVisibleStatus()) {
-			schedulePendingInitialVisibleRedraw();
+			surface.getManager().forceRedrawingLayers();
 		}
 		surface.updateDisplay(true, synchronizer);
-		getCanvas().updateVisibleStatus(getCanvas().isVisible());
 	}
 
-	@Override
-	public void dispose(final GLAutoDrawable drawable) {
+	public void disposeGL() {
 		sceneHelper.garbageCollect(openGL);
 		sceneHelper.dispose();
 		openGL.dispose();
 		keystoneHelper.dispose();
 		cameraHelper.dispose();
-		drawable.removeGLEventListener(this);
 		disposed = true;
-		// surface.getOutput().setRendered(true);
 	}
 
 	/**
@@ -499,19 +470,19 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 	
 	@Override
 	public double getxRatioBetweenPixelsAndModelUnits() {
-		return DPIHelper.autoScaleDown(getCanvas().getMonitor(), openGL.getRatios().getX());
+		return openGL.getRatios().getX();
 	}
 
 	@Override
 	public double getyRatioBetweenPixelsAndModelUnits() {
-		return DPIHelper.autoScaleDown(getCanvas().getMonitor(), openGL.getRatios().getY());
+		return openGL.getRatios().getY();
 	}
 
 	@Override
 	public double getAbsoluteRatioBetweenPixelsAndModelsUnits() {
 		return Math.min(
-				DPIHelper.autoScaleDown(getCanvas().getMonitor(), canvas.getSurfaceHeight() / data.getEnvHeight()),
-				DPIHelper.autoScaleDown(getCanvas().getMonitor(), canvas.getSurfaceWidth() / data.getEnvWidth()));
+				openGL.getViewWidth() / data.getEnvHeight(),
+				openGL.getViewHeight() / data.getEnvWidth());
 	}
 
 	/*
@@ -564,14 +535,14 @@ public class JOGLRenderer extends AbstractDisplayGraphics implements IOpenGLRend
 
 	@Override
 	public int getViewWidth() {
-		final GamaGLCanvas currentCanvas = getCanvas();
-		return currentCanvas == null || currentCanvas.isDisposed() ? super.getViewWidth() : currentCanvas.getClientArea().width;
+		if (openGL.getViewWidth() > 0) return openGL.getViewWidth();
+		return super.getViewWidth();
 	}
 
 	@Override
 	public int getViewHeight() {
-		final GamaGLCanvas currentCanvas = getCanvas();
-		return currentCanvas == null || currentCanvas.isDisposed() ? super.getViewHeight() : currentCanvas.getClientArea().height;
+		if (openGL.getViewHeight() > 0) return openGL.getViewHeight();
+		return super.getViewHeight();
 	}
 
 	/*

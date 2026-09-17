@@ -10,9 +10,7 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.scene.layers;
 
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL4;
-import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
+import android.opengl.GLES20;
 
 import gama.annotations.constants.IKeyword;
 import gama.api.gaml.expressions.IExpression;
@@ -131,7 +129,7 @@ public class OverlayLayerObject extends LayerObject {
 		if (cornerRadius > maxRadius) { cornerRadius = maxRadius; }
 
 		if (cornerRadius == 0) {
-			gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+			gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 			gl.outputVertex(d, e, 0.0);
 			gl.outputVertex(d + x, e, 0.0);
 			gl.outputVertex(d + x, e + y, 0.0);
@@ -156,7 +154,7 @@ public class OverlayLayerObject extends LayerObject {
 
 		// --- Dessiner les 5 parties rectangulaires ---
 		// Utiliser GL_TRIANGLE_FAN pour dessiner les rectangles. Chaque quad est défini par 4 sommets.
-		gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+		gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 
 		// 1. Rectangle Central
 		gl.outputVertex(cx_bl, cy_bl, 0.0); // Coin inférieur gauche du rectangle central
@@ -197,7 +195,7 @@ public class OverlayLayerObject extends LayerObject {
 
 		// Coin Inférieur Gauche
 		// Angles de PI (180°) à 3*PI/2 (270°)
-		gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+		gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 		gl.outputVertex(cx_bl, cy_bl, 0.0); // Centre de l'éventail
 		for (int i = 0; i <= numSegments; i++) {
 			double angle = (float) Math.PI + i * angleIncrement;
@@ -209,7 +207,7 @@ public class OverlayLayerObject extends LayerObject {
 
 		// Coin Inférieur Droit
 		// Angles de 3*PI/2 (270°) à 2*PI (360°)
-		gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+		gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 		gl.outputVertex(cx_br, cy_br, 0.0); // Centre de l'éventail
 		for (int i = 0; i <= numSegments; i++) {
 			double angle = (float) (3 * Math.PI / 2.0) + i * angleIncrement;
@@ -221,7 +219,7 @@ public class OverlayLayerObject extends LayerObject {
 
 		// Coin Supérieur Droit
 		// Angles de 0° à PI/2 (90°)
-		gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+		gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 		gl.outputVertex(cx_tr, cy_tr, 0.0); // Centre de l'éventail
 		for (int i = 0; i <= numSegments; i++) {
 			double angle = i * angleIncrement; // angle = 0 pour le premier point, puis augmente
@@ -233,7 +231,7 @@ public class OverlayLayerObject extends LayerObject {
 
 		// Coin Supérieur Gauche
 		// Angles de PI/2 (90°) à PI (180°)
-		gl.beginDrawing(GL4.GL_TRIANGLE_FAN);
+		gl.beginDrawing(GLES20.GL_TRIANGLE_FAN);
 		gl.outputVertex(cx_tl, cy_tl, 0.0); // Centre de l'éventail
 		for (int i = 0; i <= numSegments; i++) {
 			double angle = (float) (Math.PI / 2.0) + i * angleIncrement;
@@ -261,7 +259,7 @@ public class OverlayLayerObject extends LayerObject {
 		final double worldHeight = gl.getWorldHeight();
 		final double worldWidth = gl.getWorldWidth();
 		final double maxDim = worldHeight > worldWidth ? worldHeight : worldWidth;
-		gl.pushIdentity(GLMatrixFunc.GL_PROJECTION);
+		gl.pushIdentity(1);
 		if (viewRatio >= 1.0) {
 			gl.getCurrentMatrixStack().ortho(0, maxDim * viewRatio, -maxDim, 0, -1, 1);
 		} else {
@@ -290,8 +288,8 @@ public class OverlayLayerObject extends LayerObject {
 		// Addition to fix #2228 and #2222
 		gl.resumeZTranslation();
 		// gl.getGL().glEnable(GL.GL_DEPTH_TEST);
-		gl.pop(GLMatrixFunc.GL_MODELVIEW);
-		gl.pop(GLMatrixFunc.GL_PROJECTION);
+		gl.pop(0);
+		gl.pop(1);
 	}
 
 }

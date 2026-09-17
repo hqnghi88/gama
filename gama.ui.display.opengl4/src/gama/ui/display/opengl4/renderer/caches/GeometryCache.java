@@ -22,7 +22,9 @@ import static gama.api.types.geometry.IShape.Type.SQUARE;
 import static gama.api.utils.geometry.GeometryUtils.getTypeOf;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
-import java.nio.DoubleBuffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -34,10 +36,8 @@ import org.locationtech.jts.geom.GeometryFilter;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.jogamp.common.nio.Buffers;
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL2GL3;
-import com.jogamp.opengl.GL4;
+
+import android.opengl.GLES20;
 
 import gama.api.GAMA;
 import gama.api.runtime.scope.IScope;
@@ -85,8 +85,7 @@ public class GeometryCache {
 
 	/**
 	 * The pre-computed 2-D vertices for the rounded rectangle (40 vertices × 2 components).
-	 * Note: this array is static/shared but the DoubleBuffer wrapping it is <em>instance</em>-local
-	 * (see {@link #db}) to avoid cross-context / cross-thread races on position/limit.
+	 * Stored as a static float array for GLES20 (no GL_DOUBLE support).
 	 */
 	static final double[] roundRect = { .92, 0, .933892, .001215, .947362, .004825, .96, .010718, .971423, .018716,
 			.981284, .028577, .989282, .04, .995175, .052638, .998785, .066108, 1, .08, 1, .92, .998785, .933892,
@@ -96,12 +95,12 @@ public class GeometryCache {
 			.004825, .052638, .010718, .04, .018716, .028577, .028577, .018716, .04, .010718, .052638, .004825,
 			.066108, .001215, .08, 0 };
 
-	/**
-	 * Instance-local (non-static) DoubleBuffer wrapping the shared {@link #roundRect} array.
-	 * Each {@link GeometryCache} instance owns its own buffer so that {@code rewind()} calls are not shared
-	 * across GL contexts or threads.
-	 */
-	private final DoubleBuffer db = Buffers.newDirectDoubleBuffer(roundRect.length).put(roundRect).rewind();
+	/** Float copy of {@link #roundRect} for GLES20 uploads. */
+	private static final float[] ROUNDED_RECT_FLOAT;
+	static {
+		ROUNDED_RECT_FLOAT = new float[roundRect.length];
+		for (int i = 0; i < roundRect.length; i++) { ROUNDED_RECT_FLOAT[i] = (float) roundRect[i]; }
+	}
 
 	/**
 	 * The Class BuiltInGeometry. Holds the list IDs (Runnable-cache handles) for each face group of a
@@ -460,7 +459,7 @@ public class GeometryCache {
 		put(IShape.Type.ROUNDED, BuiltInGeometry.assemble().bottom(gl.compileAsList(() -> {
 			// Align with SQUARE; see issue #3542
 			gl.translateBy(-.5d, -.5d);
-			gl.beginDrawing(GL4.GL_TRIANGLES);
+			gl.beginDrawing(GLES20.GL_TRIANGLES);
 			gl.outputNormal(0.0, 0.0, 1.0);
 			for (int i = 0; i < roundedTriangles.length; i += 2) {
 				gl.outputVertex(roundedTriangles[i], roundedTriangles[i + 1], 0.0);
@@ -481,7 +480,7 @@ public class GeometryCache {
 		// The result is analytically smooth regardless of DISPLAY_SLICE_NUMBER preference.
 		final float[] circleTriangles = fanToTriangles(buildCircleOutline(1.0f));
 		put(CIRCLE, BuiltInGeometry.assemble().bottom(gl.compileAsList(() -> {
-			gl.beginDrawing(GL4.GL_TRIANGLES);
+			gl.beginDrawing(GLES20.GL_TRIANGLES);
 			gl.outputNormal(0.0, 0.0, 1.0);
 			for (int i = 0; i < circleTriangles.length; i += 2) {
 				gl.outputVertex(circleTriangles[i], circleTriangles[i + 1], 0.0);
@@ -655,21 +654,22 @@ public class GeometryCache {
 	 * @deprecated Superseded by {@link #buildRoundedRectOutline(float, float, float)} which uses an
 	 *             {@link OutlineShape} Bézier-arc tessellation and is resolution-independent. This method is
 	 *             retained as a low-level fallback in case the graph library is unavailable.
-	 * @param gl the {@link GL4} context
 	 */
 	@Deprecated
-	public void drawRoundedRectangle(final GL4 gl) {
+	public void drawRoundedRectangle() {
 		final int[] tmpVbo = new int[1];
-		gl.glGenBuffers(1, tmpVbo, 0);
-		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, tmpVbo[0]);
-		db.rewind();
-		gl.glBufferData(GL.GL_ARRAY_BUFFER, (long) roundRect.length * Double.BYTES, db, GL.GL_STATIC_DRAW);
-		gl.glVertexAttribPointer(0, 2, GL2GL3.GL_DOUBLE, false, 0, 0);
-		gl.glEnableVertexAttribArray(0);
-		gl.glDrawArrays(GL.GL_TRIANGLE_FAN, 0, 40);
-		gl.glDisableVertexAttribArray(0);
-		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, 0);
-		gl.glDeleteBuffers(1, tmpVbo, 0);
+		GLES20.glGenBuffers(1, tmpVbo, 0);
+		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, tmpVbo[0]);
+		final FloatBuffer floatBuffer = ByteBuffer.allocateDirect(ROUNDED_RECT_FLOAT.length * 4)
+				.order(ByteOrder.nativeOrder()).asFloatBuffer();
+		floatBuffer.put(ROUNDED_RECT_FLOAT).rewind();
+		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, ROUNDED_RECT_FLOAT.length * 4, floatBuffer, GLES20.GL_STATIC_DRAW);
+		GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 0, 0);
+		GLES20.glEnableVertexAttribArray(0);
+		GLES20.glDrawArrays(GLES20.GL_TRIANGLE_FAN, 0, 40);
+		GLES20.glDisableVertexAttribArray(0);
+		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+		GLES20.glDeleteBuffers(1, tmpVbo, 0);
 	}
 
 	/**
@@ -688,10 +688,10 @@ public class GeometryCache {
 		final double dtc = 2.0 * outer;
 		final boolean tex = gl.isTextured();
 		double r1 = inner;
-		gl.getGL().glFrontFace(GL.GL_CCW);
+		GLES20.glFrontFace(GLES20.GL_CCW);
 		for (int l = 0; l < loops; l++) {
 			final double r2 = r1 + dr;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLES20.GL_TRIANGLE_STRIP);
 			for (int s = 0; s <= slices; s++) {
 				final double a = (s == slices) ? 0.0 : s * da;
 				final double sa = Math.sin(a);
@@ -706,7 +706,7 @@ public class GeometryCache {
 			gl.endDrawing();
 			r1 = r2;
 		}
-		gl.getGL().glFrontFace(GL.GL_CW);
+		GLES20.glFrontFace(GLES20.GL_CW);
 	}
 
 	/**
@@ -725,10 +725,10 @@ public class GeometryCache {
 		final double dt = 1.0 / stacks;
 		final boolean tex = gl.isTextured();
 		double t = 1.0;
-		gl.getGL().glFrontFace(GL.GL_CCW);
+		GLES20.glFrontFace(GLES20.GL_CCW);
 		for (int i = 0; i < stacks; i++) {
 			final double rho = i * drho;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLES20.GL_TRIANGLE_STRIP);
 			double s = 0.0;
 			for (int j = 0; j <= slices; j++) {
 				final double theta = (j == slices) ? 0.0 : j * dtheta;
@@ -749,7 +749,7 @@ public class GeometryCache {
 			gl.endDrawing();
 			t -= dt;
 		}
-		gl.getGL().glFrontFace(GL.GL_CW);
+		GLES20.glFrontFace(GLES20.GL_CW);
 	}
 
 	/**
@@ -774,11 +774,11 @@ public class GeometryCache {
 		final boolean tex = gl.isTextured();
 		double z = 0.0;
 		double r = base;
-		gl.getGL().glFrontFace(GL.GL_CCW);
+		GLES20.glFrontFace(GLES20.GL_CCW);
 		for (int j = 0; j < stacks; j++) {
 			float t = (float) (j * dt);
 			float s = 0.0f;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLES20.GL_TRIANGLE_STRIP);
 			for (int i = 0; i <= slices; i++) {
 				final double x = (i == slices) ? 0.0 : Math.sin(i * da);
 				final double y = (i == slices) ? 1.0 : Math.cos(i * da);
@@ -794,7 +794,7 @@ public class GeometryCache {
 			r += dr;
 			z += dz;
 		}
-		gl.getGL().glFrontFace(GL.GL_CW);
+		GLES20.glFrontFace(GLES20.GL_CW);
 	}
 
 }

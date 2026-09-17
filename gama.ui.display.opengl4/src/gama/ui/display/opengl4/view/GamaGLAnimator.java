@@ -10,12 +10,7 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.view;
 
-import java.io.PrintStream;
 import java.util.concurrent.TimeUnit;
-
-import com.jogamp.opengl.FPSCounter;
-import com.jogamp.opengl.GLAnimatorControl;
-import com.jogamp.opengl.GLAutoDrawable;
 
 import gama.api.utils.prefs.GamaPreferences;
 import gama.api.utils.prefs.IPreferenceChangeListener.IPreferenceAfterChangeListener;
@@ -24,11 +19,11 @@ import gama.dev.THREADS;
 import gama.ui.shared.utils.WorkbenchHelper;
 
 /**
- * Single Thread Animator (with target FPS)
+ * Single Thread Animator (with target FPS) — Android stub.
  *
  * @author Alexis Drogoul, loosely adapted from (aqd@5star.com.tw)
  */
-public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorControl.UncaughtExceptionHandler {
+public class GamaGLAnimator implements Runnable {
 
 	/** The fps changed. */
 	IPreferenceAfterChangeListener<Integer> fpsChanged = newValue -> targetFPS = newValue;
@@ -41,9 +36,6 @@ public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorCo
 
 	/** The animator thread. */
 	protected final Thread animatorThread;
-
-	/** The canvas. */
-	// private final GLAutoDrawable canvas;
 
 	/** The display runnable. */
 	private final Runnable displayRunnable;
@@ -60,9 +52,8 @@ public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorCo
 	/** The fps total. */
 	private float fpsLast, fpsTotal;
 
-	@Override
 	public void resetFPSCounter() {
-		fpsStartTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime()); // overwrite startTime to real init one
+		fpsStartTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
 		fpsLastUpdateTime = fpsStartTime;
 		fpsLastPeriod = 0;
 		fpsTotalFrames = 0;
@@ -72,56 +63,43 @@ public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorCo
 		fpsTotalDuration = 0;
 	}
 
-	@Override
 	public int getUpdateFPSFrames() { return fpsUpdateFramesInterval; }
 
-	@Override
 	public long getFPSStartTime() { return fpsStartTime; }
 
-	@Override
 	public long getLastFPSUpdateTime() { return fpsLastUpdateTime; }
 
-	@Override
 	public long getLastFPSPeriod() { return fpsLastPeriod; }
 
-	@Override
 	public float getLastFPS() { return fpsLast; }
 
-	@Override
 	public int getTotalFPSFrames() { return fpsTotalFrames; }
 
-	@Override
 	public long getTotalFPSDuration() { return fpsTotalDuration; }
 
-	@Override
 	public float getTotalFPS() { return fpsTotal; }
 
-	@Override
-	public void setUpdateFPSFrames(final int frames, final PrintStream out) {
+	public void setUpdateFPSFrames(final int frames) {
 		fpsUpdateFramesInterval = frames;
 	}
 
 	/**
 	 * Instantiates a new single thread GL animator.
 	 *
-	 * @param window
-	 *            the canvas
+	 * @param displayRunnable
+	 *            the runnable to execute on each frame
 	 */
-	public GamaGLAnimator(final GLAutoDrawable window) {
-		this.displayRunnable = () -> { if (window.isRealized()) { window.display(); } };
-		window.setAnimator(this);
-		this.animatorThread = Thread.ofPlatform().name("Animator thread").unstarted(this);
+	public GamaGLAnimator(final Runnable displayRunnable) {
+		this.displayRunnable = displayRunnable;
+		this.animatorThread = new Thread(this, "Animator thread");
 		GamaPreferences.Displays.OPENGL_FPS.onChange(fpsChanged);
-		setUpdateFPSFrames(FPSCounter.DEFAULT_FRAMES_PER_INTERVAL, null);
+		setUpdateFPSFrames(50);
 	}
 
-	@Override
 	public boolean isStarted() { return animatorThread.isAlive(); }
 
-	@Override
 	public Thread getThread() { return animatorThread; }
 
-	@Override
 	public boolean start() {
 		this.stopRequested = false;
 		this.animatorThread.start();
@@ -129,7 +107,6 @@ public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorCo
 		return true;
 	}
 
-	@Override
 	public boolean stop() {
 		this.stopRequested = true;
 		if (WorkbenchHelper.isDisplayThread()) return true;
@@ -142,91 +119,50 @@ public class GamaGLAnimator implements Runnable, GLAnimatorControl, GLAnimatorCo
 		return true;
 	}
 
-	@Override
 	public boolean isAnimating() { return true; }
 
-	@Override
 	public boolean isPaused() { return false; }
 
-	@Override
-	public boolean pause() {
-		return false;
-	}
+	public boolean pause() { return false; }
 
-	@Override
-	public boolean resume() {
-		return true;
-	}
-
-	@Override
-	public void add(final GLAutoDrawable drawable) {}
-
-	@Override
-	public void remove(final GLAutoDrawable drawable) {}
+	public boolean resume() { return true; }
 
 	@Override
 	public void run() {
-		// while (!window.isRealized()) {}
 		while (!stopRequested) {
 			try {
-				// if (isARM() || PlatformHelper.isLinux()) {
-				// if (canvas.isRealized()) { canvas.display(); }
-				// Thread.ofVirtual().start(() -> {
-
-				// if (canvas.isRealized()) { canvas.display(); }
-
-				// });
-
 				WorkbenchHelper.run(displayRunnable);
-				// } else if (canvas.isRealized()) { canvas.display(); }
 				if (capFPS) {
 					final long frameDuration = 1000 / targetFPS;
 					final long timeSleep = frameDuration - fpsLastPeriod;
 					if (timeSleep >= 0) { THREADS.WAIT(timeSleep); }
 				}
 			} catch (final RuntimeException ex) {
-				uncaughtException(this, null, ex);
+				uncaughtException(ex);
 			}
 			tickFPS();
 		}
 	}
 
-	@Override
-	public UncaughtExceptionHandler getUncaughtExceptionHandler() { return this; }
-
-	@Override
-	public void setUncaughtExceptionHandler(final UncaughtExceptionHandler handler) {}
-
-	@Override
-	public void uncaughtException(final GLAnimatorControl animator, final GLAutoDrawable drawable,
-			final Throwable cause) {
-		DEBUG.ERR("Uncaught exception in animator & canvas:" + cause.getMessage());
+	public void uncaughtException(final Throwable cause) {
+		DEBUG.ERR("Uncaught exception in animator: " + cause.getMessage());
 		cause.printStackTrace();
-
 	}
 
 	/**
-	 * Increases total frame count and updates values if feature is enabled and update interval is reached.<br>
-	 *
-	 * Shall be called by actual FPSCounter implementing renderer, after display a new frame.
-	 *
+	 * Increases total frame count and updates values if feature is enabled and update interval is reached.
 	 */
 	public final void tickFPS() {
 		fpsTotalFrames++;
 		if (fpsUpdateFramesInterval > 0 && fpsTotalFrames % fpsUpdateFramesInterval == 0) {
 			final long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
 			fpsLastPeriod = now - fpsLastUpdateTime;
-			fpsLastPeriod = Math.max(fpsLastPeriod, 1); // div 0
+			fpsLastPeriod = Math.max(fpsLastPeriod, 1);
 			fpsLast = fpsUpdateFramesInterval * 1000f / fpsLastPeriod;
 			fpsTotalDuration = now - fpsStartTime;
-			fpsTotalDuration = Math.max(fpsTotalDuration, 1); // div 0
+			fpsTotalDuration = Math.max(fpsTotalDuration, 1);
 			fpsTotal = fpsTotalFrames * 1000f / fpsTotalDuration;
 			fpsLastUpdateTime = now;
-			if (DEBUG.IS_ON()) {
-				// StringBuilder sb = new StringBuilder();
-				String fpsLastS = String.valueOf(fpsLast);
-				fpsLastS = fpsLastS.substring(0, fpsLastS.indexOf('.') + 2);
-			}
 		}
 	}
 

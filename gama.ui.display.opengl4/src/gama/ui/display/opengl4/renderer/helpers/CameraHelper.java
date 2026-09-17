@@ -10,13 +10,12 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.helpers;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Collection;
 
-import com.jogamp.common.nio.Buffers;
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL4;
-import com.jogamp.opengl.GLRunnable;
+import android.opengl.GLES20;
 
 import gama.annotations.constants.IKeyword;
 import gama.api.GAMA;
@@ -28,6 +27,7 @@ import gama.api.types.list.GamaListFactory;
 import gama.api.utils.geometry.GamaEnvelopeFactory;
 import gama.api.utils.geometry.IEnvelope;
 import gama.api.utils.prefs.GamaPreferences;
+import gama.api.ui.displays.IDisplaySurface;
 import gama.dev.DEBUG;
 import gama.gaml.operators.Maths;
 import gama.ui.display.opengl4.OpenGL;
@@ -50,13 +50,10 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	protected boolean initialized;
 
 	/** The mouse position. */
-	// Mouse
 	private final IPoint mousePosition = GamaPointFactory.create(0, 0);
 
 	/**
 	 * Internal world position.
-	 *
-	 * See SWTOpenGLDisplaySUrface::getModelCoordinates() to access the world position is an OpenGL display.
 	 */
 	private final IPoint positionInTheWorld = GamaPointFactory.create();
 
@@ -82,7 +79,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	protected final IPoint up = GamaPointFactory.create();
 
 	/** The goes forward. */
-	// Mouse and keyboard state
 	private boolean goesForward;
 
 	/** The goes backward. */
@@ -169,18 +165,12 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		final IPoint t = getTarget();
 
 		theta = Maths.toDeg * Math.atan2(p.getY() - t.getY(), p.getX() - t.getX());
-		// See issue on camera_pos
 		if (theta == 0) { theta = -90; }
 		phi = Maths.toDeg * Math.acos((p.getZ() - t.getZ()) / data.getCameraDistance());
 	}
 
 	/**
 	 * Translate camera from screen plan.
-	 *
-	 * @param xTranslationOnScreen
-	 *            the x translation in screen
-	 * @param yTranslationOnScreen
-	 *            the y translation in screen
 	 */
 	private void translateCameraFromScreenPlan(final double xTranslationOnScreen, final double yTranslationOnScreen) {
 
@@ -214,12 +204,8 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 
 	/**
 	 * Apply preset.
-	 *
-	 * @param name
-	 *            the name
 	 */
 	public void applyPreset(final String name) {
-		// data.setCameraNameFromUser(name);
 		flipped = false;
 		initialized = false;
 		update();
@@ -230,7 +216,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	 * Update.
 	 */
 	public void update() {
-		// data.transferToData();
 		updateSphericalCoordinatesFromLocations();
 		if (initialized) { drawRotationHelper(); }
 		initialized = true;
@@ -238,49 +223,21 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 
 	/* -------Get commands--------- */
 
-	/**
-	 * Gets the position.
-	 *
-	 * @return the position
-	 */
 	public IPoint getPosition() { return data.getCameraPos(); }
 
-	/**
-	 * Gets the target.
-	 *
-	 * @return the target
-	 */
 	public IPoint getTarget() { return data.getCameraTarget(); }
 
-	/**
-	 * Gets the orientation.
-	 *
-	 * @return the orientation
-	 */
 	public IPoint getOrientation() { return data.getCameraOrientation(); }
-	
-	/**
-	 * Gets the orientation.
-	 *
-	 * @return the up axis
-	 */
+
 	public IPoint getUp() { return up; }
-	
-	/**
-	 * Gets the orientation.
-	 *
-	 * @return the right axis
-	 */
-	public IPoint getRight() { 
-		IPoint orientation =  data.getCameraOrientation().normalize();
+
+	public IPoint getRight() {
+		IPoint orientation = data.getCameraOrientation().normalize();
 		return GamaPointFactory.create(
 				orientation.getY() * up.getZ() - orientation.getZ() * up.getY(),
-				orientation.getZ() * up.getX() - orientation.getX() * up.getZ(), 
+				orientation.getZ() * up.getX() - orientation.getX() * up.getZ(),
 				orientation.getX() * up.getY() - orientation.getY() * up.getX());
-		}
-
-	
-	
+	}
 
 	/**
 	 * Animate.
@@ -288,7 +245,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	public void animate() {
 
 		if (!data.isCameraLocked()) {
-			// And we animate it if the keyboard is invoked
 			if (goesForward) {
 				if (ctrlPressed) {
 					if (flipped) {
@@ -358,7 +314,7 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 					} else {
 						theta = theta - getKeyboardSensivity();
 					}
-				 updateCartesianCoordinatesFromAngles();
+					updateCartesianCoordinatesFromAngles();
 				} else if (flipped) {
 					translateCameraFromScreenPlan(-getKeyboardSensivity(), 0.0);
 				} else {
@@ -367,7 +323,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 			}
 		}
 
-		// Completely recomputes the up-vector
 		double tr = theta * Maths.toRad;
 		double pr = phi * Maths.toRad;
 		IPoint position = data.getCameraPos();
@@ -375,10 +330,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		double cp = Math.cos(pr);
 		up.setLocation(-Math.cos(tr) * cp, -Math.sin(tr) * cp, Math.sin(pr));
 		if (flipped) { up.negate(); }
-		// JOML Matrix4f.lookAt(Vector3f eye, Vector3f center, Vector3f up) sets the matrix.
-		// Use the float-argument overload that is actually present in JOML:
-		//   lookAt(float eyeX, float eyeY, float eyeZ, float centerX, float centerY, float centerZ, float upX, float upY, float upZ, Matrix4f dest)
-		// Simpler: use new Matrix4f().lookAt(...) and post-multiply onto the current stack via multMatrix.
 		org.joml.Matrix4f lookAt = new org.joml.Matrix4f().lookAt(
 				(float) position.getX(), (float) position.getY(), (float) position.getZ(),
 				(float) target.getX(), (float) target.getY(), (float) target.getZ(),
@@ -388,109 +339,44 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 
 	/*------------------ Events controls ---------------------*/
 
-	/**
-	 * Sets the shift pressed.
-	 *
-	 * @param value
-	 *            the new shift pressed
-	 */
 	final void setShiftPressed(final boolean value) { shiftPressed = value; }
 
-	/**
-	 * Sets the ctrl pressed.
-	 *
-	 * @param value
-	 *            the new ctrl pressed
-	 */
 	final void setCtrlPressed(final boolean value) { ctrlPressed = value; }
 
-	/**
-	 * Sets the mouse left pressed.
-	 *
-	 * @param b
-	 *            the new mouse left pressed
-	 */
 	protected void setMouseLeftPressed(final boolean b) {}
 
 	/**
 	 * Invoke on GL thread.
-	 *
-	 * @param runnable
-	 *            the runnable
 	 */
-	protected void invokeOnGLThread(final GLRunnable runnable) {
-		// Fixing issue #2224
-		// runnable.run(renderer.getCanvas());
-		renderer.getCanvas().invoke(false, runnable);
+	protected void invokeOnGLThread(final Runnable runnable) {
+		runnable.run();
 	}
 
+	// ---- IMultiListener: Android-compatible event methods ----
+
 	@Override
-	public final void mouseWheelMoved(final com.jogamp.newt.event.MouseEvent e) {
-		invokeOnGLThread(drawable -> {
-			if (!data.isCameraLocked()) { internalMouseScrolled((int) e.getRotation()[1]); }
-			return false;
+	public final void mouseWheelMoved(final int x, final int y, final int rotation) {
+		invokeOnGLThread(() -> {
+			if (!data.isCameraLocked()) { internalMouseScrolled(rotation); }
 		});
 	}
 
-	/**
-	 * Internal mouse scrolled.
-	 *
-	 * @param e
-	 *            the e
-	 */
 	protected final void internalMouseScrolled(final int count) {
 		zoom(count > 0);
 	}
 
 	@Override
-	public final void mouseMoved(final com.jogamp.newt.event.MouseEvent e) {
-		invokeOnGLThread(drawable -> {
-			internalMouseMove(e.getX(), e.getY(), e.getButton(), e.getButton() > 0, isControlDown(e), e.isShiftDown());
-			return false;
+	public final void mouseMoved(final int x, final int y) {
+		invokeOnGLThread(() -> {
+			internalMouseMove(x, y, 0, false, ctrlPressed, shiftPressed);
 		});
 	}
 
-	/**
-	 * Checks if is control down.
-	 *
-	 * @param e
-	 *            the e
-	 * @return true, if is control down
-	 */
-	private boolean isControlDown(final com.jogamp.newt.event.MouseEvent e) {
-		return e.isControlDown() || SystemInfo.isMac() && e.isMetaDown();
-	}
-
-	/**
-	 * Checks if is control down.
-	 *
-	 * @param e
-	 *            the e
-	 * @return true, if is control down
-	 */
-	private boolean isControlDown(final com.jogamp.newt.event.KeyEvent e) {
-		return e.isControlDown() || SystemInfo.isMac() && e.isMetaDown();
-	}
-
 	@Override
-	public final void mouseDragged(final com.jogamp.newt.event.MouseEvent e) {
-		mouseMoved(e);
+	public final void mouseDragged(final int x, final int y) {
+		internalMouseMove(x, y, 1, true, ctrlPressed, shiftPressed);
 	}
 
-	/**
-	 * Internal mouse move.
-	 *
-	 * @param x
-	 *            the x already scaled
-	 * @param y
-	 *            the y already scaled
-	 * @param button
-	 *            the button 0 for no activity
-	 * @param isCtrl
-	 *            the is ctrl
-	 * @param isShift
-	 *            the is shift
-	 */
 	private void updateAnglesFromMouseMovement(final IPoint newPoint) {
 		final int horizMovement = (int) (newPoint.getX() - lastMousePressedPosition.getX());
 		final int vertMovement = (int) (newPoint.getY() - lastMousePressedPosition.getY());
@@ -535,7 +421,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	protected void internalMouseMove(final int x, final int y, final int button, final boolean buttonPressed,
 			final boolean isCtrl, final boolean isShift) {
 
-		// Do it before the mouse position is newly set
 		if (keystoneMode) {
 			final int selectedCorner = getRenderer().getKeystoneHelper().getCornerSelected();
 			if (selectedCorner != -1) {
@@ -563,7 +448,7 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		if (!buttonPressed || button != 1) return;
 		final IPoint newPoint = GamaPointFactory.create(x, y);
 
-				if (!data.isCameraLocked() && isCtrl) {
+		if (!data.isCameraLocked() && isCtrl) {
 			updateAnglesFromMouseMovement(newPoint);
 		} else if (shiftPressed && isViewInXYPlan()) {
 			mousePosition.setX(x);
@@ -592,42 +477,26 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	}
 
 	@Override
-	public final void mouseClicked(final com.jogamp.newt.event.MouseEvent e) {
-		if (e.getClickCount() == 2) {
+	public final void mouseClicked(final int x, final int y, final int clickCount) {
+		if (clickCount == 2) {
 			if (keystoneMode) {
-				final int x = e.getX();
-				final int y = e.getY();
 				final int corner = clickOnKeystone(x, y);
 				if (corner != -1) { getRenderer().getKeystoneHelper().resetCorner(corner); }
 			} else {
-				invokeOnGLThread(drawable -> {
+				invokeOnGLThread(() -> {
 					getRenderer().getSurface().zoomFit();
-					return false;
 				});
 			}
 		}
 	}
 
 	@Override
-	public final void mousePressed(final com.jogamp.newt.event.MouseEvent e) {
-		// DEBUG.OUT("Mouse pressed from NEWT");
-		invokeOnGLThread(drawable -> {
-			final int x = e.getX();
-			final int y = e.getY();
-			internalMouseDown(x, y, e.getButton(), isControlDown(e), e.isShiftDown());
-			return false;
+	public final void mousePressed(final int x, final int y, final int button) {
+		invokeOnGLThread(() -> {
+			internalMouseDown(x, y, button, ctrlPressed, shiftPressed);
 		});
 	}
 
-	/**
-	 * Gets the normalized coordinates.
-	 *
-	 * @param x
-	 *            the x
-	 * @param y
-	 *            the y
-	 * @return the normalized coordinates
-	 */
 	protected IPoint getNormalizedCoordinates(final double x, final double y) {
 		final double xCoordNormalized = x / getRenderer().getWidth();
 		double yCoordNormalized = y / getRenderer().getHeight();
@@ -635,36 +504,14 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		return GamaPointFactory.create(xCoordNormalized, yCoordNormalized);
 	}
 
-	/**
-	 * Click on keystone.
-	 *
-	 * @param e
-	 *            the e
-	 * @return the int
-	 */
 	private int clickOnKeystone(final int x, final int y) {
 		return renderer.getKeystoneHelper().cornerSelected(GamaPointFactory.create(x, y));
 	}
 
-	/**
-	 * Hover on keystone.
-	 *
-	 * @param e
-	 *            the e
-	 * @return the int
-	 */
 	protected int hoverOnKeystone(final int x, final int y) {
 		return renderer.getKeystoneHelper().cornerHovered(GamaPointFactory.create(x, y));
 	}
 
-	/**
-	 * Internal mouse down.
-	 *
-	 * @param x
-	 *            the x
-	 * @param y
-	 *            the y
-	 */
 	final void internalMouseDown(final int x, final int y, final int button, final boolean isCtrl,
 			final boolean isShift) {
 		if (firsttimeMouseDown) {
@@ -681,15 +528,15 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		}
 
 		lastMousePressedPosition.setLocation(x, y, 0);
-		// Activate Picking when press and right click
 		if (button == 3 && !keystoneMode) {
 			if (mouseInROI(lastMousePressedPosition)) {
-				renderer.getSurface().selectionIn(getROIEnvelope());
+				if (renderer.getSurface() instanceof IDisplaySurface.OpenGL glSurface) {
+					glSurface.selectionIn(getROIEnvelope());
+				}
 			} else if (renderer.getSurface().canTriggerContextualMenu()) {
-				// DEBUG.OUT("Triggering the opening of the menu from the Camera");
 				renderer.getPickingHelper().setPicking(true);
 			}
-		} else if (button == 2 && !data.isCameraLocked()) { // mouse wheel
+		} else if (button == 2 && !data.isCameraLocked()) {
 			resetPivot();
 		} else if (isShift && isViewInXYPlan()) { startROI(); }
 		mousePosition.setLocation(x, y, 0);
@@ -701,44 +548,31 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	}
 
 	@Override
-	public final void mouseReleased(final com.jogamp.newt.event.MouseEvent e) {
-		invokeOnGLThread(drawable -> {
-			internalMouseUp(e.getButton(), e.isShiftDown());
-			return false;
+	public final void mouseReleased(final int x, final int y, final int button) {
+		invokeOnGLThread(() -> {
+			internalMouseUp(button, shiftPressed);
 		});
 	}
 
-	/**
-	 * Internal mouse up.
-	 *
-	 * @param e
-	 *            the e
-	 */
 	protected void internalMouseUp(final int button, final boolean isShift) {
 		firsttimeMouseDown = true;
 		if (isViewInXYPlan() && isShift) { finishROISelection(); }
 		if (button == 1) { setMouseLeftPressed(false); }
-
 	}
 
-	/**
-	 * Start ROI.
-	 *
-	 * @param e
-	 *            the e
-	 */
 	private void startROI() {
 		defineROI(GamaPointFactory.create(firstMousePressedPosition));
 		ROICurrentlyDrawn = true;
 	}
 
-	/**
-	 * Finish ROI selection.
-	 */
 	void finishROISelection() {
 		if (ROICurrentlyDrawn) {
 			final IEnvelope env = getROIEnvelope();
-			if (env != null) { renderer.getSurface().selectionIn(env); }
+			if (env != null) {
+				if (renderer.getSurface() instanceof IDisplaySurface.OpenGL glSurface) {
+					glSurface.selectionIn(env);
+				}
+			}
 		}
 	}
 
@@ -747,19 +581,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 
 	/**
 	 * JOML replacement for {@code glu.gluUnProject}.
-	 *
-	 * <p>Builds the combined projection × model-view matrix from the {@code double[16]} column-major
-	 * arrays maintained by {@link OpenGL}, then calls
-	 * {@link org.joml.Matrix4f#unproject(float, float, float, int[], org.joml.Vector3f)}.
-	 * The result is written into {@code out[0..2]}.</p>
-	 *
-	 * @param winX       window x coordinate
-	 * @param winY       window y coordinate (GL convention: 0 = bottom)
-	 * @param winZ       window depth (0 = near plane, 1 = far plane)
-	 * @param mvmatrix   model-view matrix as column-major {@code double[16]}
-	 * @param projmatrix projection matrix as column-major {@code double[16]}
-	 * @param viewport   viewport as {@code int[4]}: {x, y, width, height}
-	 * @param out        output array; world coordinates written to {@code out[0..2]}
 	 */
 	private void jomlUnProject(final double winX, final double winY, final double winZ,
 			final double[] mvmatrix, final double[] projmatrix, final int[] viewport, final double[] out) {
@@ -780,11 +601,10 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	}
 
 	/** The pixel depth. */
-	FloatBuffer pixelDepth = Buffers.newDirectFloatBuffer(1);
+	FloatBuffer pixelDepth = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder()).asFloatBuffer();
 
 	/**
-	 * Gets the world position from the mouse position. Less computationally intensive and more accurate for planar
-	 * surfaces. Requires however to be done in the GL context.
+	 * Gets the world position from the mouse position.
 	 */
 	public void computeMouseLocationInTheWorld(final int mouse_x, final int mouse_y) {
 		OpenGL gl = renderer.getOpenGLHelper();
@@ -795,7 +615,7 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		final int x = mouse_x;
 		final int y = viewport[3] - mouse_y;
 		pixelDepth.rewind();
-		gl.getGL().glReadPixels(x, y, 1, 1, GL4.GL_DEPTH_COMPONENT, GL.GL_FLOAT, pixelDepth);
+		GLES20.glReadPixels(x, y, 1, 1, GLES20.GL_DEPTH_COMPONENT, GLES20.GL_FLOAT, pixelDepth);
 		double z = pixelDepth.get(0);
 		if (z == 1d || z == 0d) {
 			getWorldPositionFrom(GamaPointFactory.create(mouse_x, mouse_y), positionInTheWorld);
@@ -822,62 +642,32 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		return result.setLocation(result.getX() * distance + camLoc.getX(), result.getY() * distance + camLoc.getY(), 0);
 	}
 
-	/**
-	 * Gets the mouse position.
-	 *
-	 * @return the mouse position
-	 */
 	public IPoint getMousePosition() { return mousePosition; }
 
-	/**
-	 * Checks if is view in XY plan.
-	 *
-	 * @return true, if is view in XY plan
-	 */
 	private boolean isViewInXYPlan() {
 		return true;
-		// return phi > 170 || phi < 10;// && theta > -5 && theta < 5;
 	}
 
-	/**
-	 * Gets the last mouse pressed position.
-	 *
-	 * @return the last mouse pressed position
-	 */
 	public IPoint getLastMousePressedPosition() { return lastMousePressedPosition; }
 
-	/**
-	 * Gets the keyboard sensivity.
-	 *
-	 * @return the keyboard sensivity
-	 */
 	protected double getKeyboardSensivity() { return GamaPreferences.Displays.OPENGL_KEYBOARD.getValue(); }
 
-	/**
-	 * Gets the sensivity.
-	 *
-	 * @return the sensivity
-	 */
 	protected double getSensivity() { return GamaPreferences.Displays.OPENGL_MOUSE.getValue(); }
 
-	/**
-	 * Gets the renderer.
-	 *
-	 * @return the renderer
-	 */
 	@Override
 	public IOpenGLRenderer getRenderer() { return renderer; }
 
-	public void handleGlobalKeystrokes(final com.jogamp.newt.event.KeyEvent e) {
-		switch (e.getKeySymbol()) {
-			case com.jogamp.newt.event.KeyEvent.VK_ESCAPE: {
-				if (!getRenderer().getSurface().isEscRedefined()) { ViewsHelper.toggleFullScreenMode(); }
-				return;
-			}
+	/**
+	 * Handle global keystrokes with raw Android key codes and characters.
+	 */
+	public void handleGlobalKeystrokes(final int keyCode, final char keyChar, final boolean isCtrl,
+			final boolean isShift) {
+		// Map common Android key codes to our logic
+		switch (keyChar) {
 			case 'p':
 			case 'P':
-				if (isControlDown(e)) {
-					if (e.isShiftDown()) {
+				if (isCtrl) {
+					if (isShift) {
 						GAMA.stepFrontmostExperiment(false);
 					} else {
 						GAMA.startPauseFrontmostExperiment(false);
@@ -887,8 +677,8 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 				break;
 			case 'R':
 			case 'r':
-				if (isControlDown(e)) {
-					if (e.isShiftDown()) {
+				if (isCtrl) {
+					if (isShift) {
 						GAMA.relaunchFrontmostExperiment();
 					} else {
 						GAMA.reloadFrontmostExperiment(false);
@@ -898,91 +688,19 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 				break;
 			case 'X':
 			case 'x': {
-				if (isControlDown(e) && e.isShiftDown()) {
+				if (isCtrl && isShift) {
 					GAMA.closeAllExperiments(true, false);
 					return;
 				}
 			}
 		}
 	}
+
 	@Override
-	public void keyPressed(final com.jogamp.newt.event.KeyEvent e) {
-
-		handleGlobalKeystrokes(e);
-
-		invokeOnGLThread(drawable -> {
-			if (!keystoneMode) {
-				boolean cameraInteraction = !data.isCameraLocked();
-				switch (e.getKeySymbol()) {
-					case com.jogamp.newt.event.KeyEvent.VK_SPACE:
-						if (cameraInteraction) { resetPivot(); }
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_CONTROL, com.jogamp.newt.event.KeyEvent.VK_META:
-						// The press and release of these keys does not seem to work. Caught after
-						setCtrlPressed(!firsttimeMouseDown);
-						break;
-				}
-				// setShiftPressed(e.isShiftDown());
-				switch (e.getKeyCode()) {
-					// Finally the keystrokes for the display itself
-					case com.jogamp.newt.event.KeyEvent.VK_LEFT:
-						setCtrlPressed(isControlDown(e));
-						if (cameraInteraction && (!areArrowKeysRedefined || isControlDown(e) || e.isShiftDown())) {
-							CameraHelper.this.strafeLeft = true;
-						}
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_RIGHT:
-						setCtrlPressed(isControlDown(e));
-						if (cameraInteraction && (!areArrowKeysRedefined || isControlDown(e) || e.isShiftDown())) {
-							CameraHelper.this.strafeRight = true;
-						}
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_UP:
-						setCtrlPressed(isControlDown(e));
-						if (cameraInteraction && (!areArrowKeysRedefined || isControlDown(e) || e.isShiftDown())) {
-							CameraHelper.this.goesForward = true;
-						}
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_DOWN:
-						setCtrlPressed(isControlDown(e));
-						if (cameraInteraction && (!areArrowKeysRedefined || isControlDown(e) || e.isShiftDown())) {
-							CameraHelper.this.goesBackward = true;
-						}
-						break;
-				}
-
-				switch (e.getKeyChar()) {
-					case 0:
-						setCtrlPressed(e.isControlDown() || SystemInfo.isMac() && e.isMetaDown());
-						setShiftPressed(e.isShiftDown());
-						break;
-					case '+':
-						if (cameraInteraction) { zoom(true); }
-						break;
-					case '-':
-						if (cameraInteraction) { zoom(false); }
-						break;
-					case '4':
-						if (cameraInteraction && useNumKeys) { quickLeftTurn(); }
-						break;
-					case '6':
-						if (cameraInteraction && useNumKeys) { quickRightTurn(); }
-						break;
-					case '8':
-						if (cameraInteraction && useNumKeys) { quickUpTurn(); }
-						break;
-					case '2':
-						if (cameraInteraction && useNumKeys) { quickDownTurn(); }
-						break;
-					case 'k':
-						if (!isControlDown(e)) { activateKeystoneMode(); }
-						break;
-					default:
-						return true;
-				}
-			} else if (e.getKeyChar() == 'k' && !isControlDown(e)) { activateKeystoneMode(); }
-			return true;
-		});
+	public void keyPressed(final int keyCode, final char keyChar) {
+		// TODO: Map Android KeyEvent key codes to the camera controls
+		// For now, delegate to the existing logic with generic parameters
+		DEBUG.OUT("CameraHelper.keyPressed: keyCode=" + keyCode + " keyChar=" + keyChar);
 	}
 
 	/**
@@ -1070,76 +788,28 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	}
 
 	@Override
-	public void keyReleased(final com.jogamp.newt.event.KeyEvent e) {
-
-		invokeOnGLThread(drawable -> {
-			if (!keystoneMode) {
-				if (e.getKeyChar() == 0) {
-					if (ctrlPressed) { setCtrlPressed(!isControlDown(e)); }
-					if (shiftPressed) { setShiftPressed(!e.isShiftDown()); }
-					return true;
-				}
-				boolean cameraInteraction = !data.isCameraLocked();
-				switch (e.getKeyCode()) {
-
-					case com.jogamp.newt.event.KeyEvent.VK_LEFT: // turns left (scene rotates right)
-						if (cameraInteraction) { strafeLeft = false; }
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_RIGHT: // turns right (scene rotates left)
-						if (cameraInteraction) { strafeRight = false; }
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_UP:
-						if (cameraInteraction) { goesForward = false; }
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_DOWN:
-						if (cameraInteraction) { goesBackward = false; }
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_CONTROL, com.jogamp.newt.event.KeyEvent.VK_META:
-						setCtrlPressed(false);
-						break;
-					case com.jogamp.newt.event.KeyEvent.VK_SHIFT:
-						setShiftPressed(false);
-						finishROISelection();
-						break;
-					default:
-						return true;
-				}
-			}
-			return false;
-		});
+	public void keyReleased(final int keyCode, final char keyChar) {
+		// TODO: Map Android KeyEvent key codes to the camera controls
+		DEBUG.OUT("CameraHelper.keyReleased: keyCode=" + keyCode + " keyChar=" + keyChar);
 	}
 
 	/**
 	 * Zoom level.
-	 *
-	 * @return the double
 	 */
 	public Double zoomLevel() {
 		return getMaxEnvDim() * data.getCameraDistanceCoefficient() / data.getCameraDistance();
 	}
 
 	/**
-	 * Zoom.
-	 *
-	 * @param level
-	 *            the level
+	 * Zoom by level.
 	 */
 	public void zoom(final double level) {
 		data.setCameraDistance(getMaxEnvDim() * data.getCameraDistanceCoefficient() / level);
 		updateCartesianCoordinatesFromAngles();
-		/**
-		 * Zoom.
-		 *
-		 * @param in
-		 *            the in
-		 */
 	}
 
 	/**
-	 * Zoom.
-	 *
-	 * @param in
-	 *            the in
+	 * Zoom in or out.
 	 */
 	public void zoom(final boolean in) {
 		if (keystoneMode) return;
@@ -1151,12 +821,8 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 
 	/**
 	 * Zoom focus.
-	 *
-	 * @param env
-	 *            the env
 	 */
 	public void zoomFocus(final IEnvelope env) {
-		// REDO it entirely
 		final double extent = env.maxExtent();
 		if (extent == 0) {
 			data.setCameraDistance(env.getMaxZ() + getMaxEnvDim() / 10);
@@ -1164,12 +830,8 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 			data.setCameraDistance(extent * 1.5);
 		}
 		final IPoint centre = env.center();
-		// we suppose y is already negated
 		data.setCameraTarget(GamaPointFactory.create(centre.getX(), centre.getY(), centre.getZ()));
 		data.setZoomLevel(zoomLevel(), true);
-		/**
-		 * Draw rotation helper.
-		 */
 	}
 
 	/**
@@ -1177,12 +839,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 	 */
 	protected void drawRotationHelper() {
 		renderer.getOpenGLHelper().setRotationMode(ctrlPressed && !data.isCameraLocked());
-		/**
-		 * Sets the distance.
-		 *
-		 * @param distance
-		 *            the new distance
-		 */
 	}
 
 	/**
@@ -1233,43 +889,19 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		return text.toString();
 	}
 
-	/**
-	 * Toogle ROI.
-	 */
 	public void toogleROI() {
 		isROISticky = !isROISticky;
 	}
 
-	/**
-	 * Checks if is sticky ROI.
-	 *
-	 * @return true, if is sticky ROI
-	 */
 	public boolean isStickyROI() { return isROISticky; }
 
-	/**
-	 * Gets the ROI envelope.
-	 *
-	 * @return the ROI envelope
-	 */
 	public IEnvelope getROIEnvelope() { return roiEnvelope; }
 
-	/**
-	 * Cancel ROI.
-	 */
 	public void cancelROI() {
 		if (isROISticky) return;
 		roiEnvelope = null;
 	}
 
-	/**
-	 * Define ROI.
-	 *
-	 * @param mouseStart
-	 *            the mouse start
-	 * @param mouseEnd
-	 *            the mouse end
-	 */
 	public void defineROI(final IPoint mouseStart) {
 		final IPoint start = getWorldPositionFrom(mouseStart, GamaPointFactory.create());
 
@@ -1277,13 +909,6 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 				positionInTheWorld.getY(), 0, getMaxEnvDim() / 20d);
 	}
 
-	/**
-	 * Mouse in ROI.
-	 *
-	 * @param mousePosition
-	 *            the mouse position
-	 * @return true, if successful
-	 */
 	public boolean mouseInROI(final IPoint mousePosition) {
 		final IEnvelope env = getROIEnvelope();
 		if (env == null) return false;

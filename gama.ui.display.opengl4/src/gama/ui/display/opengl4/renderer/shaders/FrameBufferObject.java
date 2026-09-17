@@ -12,7 +12,7 @@ package gama.ui.display.opengl4.renderer.shaders;
 
 import java.nio.ByteBuffer;
 
-import com.jogamp.opengl.GL4;
+import android.opengl.GLES20;
 
 /**
  * The Class FrameBufferObject.
@@ -37,18 +37,13 @@ public class FrameBufferObject {
 	/** The texture array. */
 	private final int[] textureArray = new int[] { -1 };
 
-	/** The gl. */
-	private final GL4 gl;
-
 	/**
 	 * Instantiates a new frame buffer object.
 	 *
-	 * @param gl the gl
 	 * @param width the width
 	 * @param height the height
 	 */
-	public FrameBufferObject(final GL4 gl, final int width, final int height) {
-		this.gl = gl;
+	public FrameBufferObject(final int width, final int height) {
 		setDisplayDimensions(width, height);
 		initialiseFrameBuffer();
 	}
@@ -78,10 +73,10 @@ public class FrameBufferObject {
 	 * Clean up.
 	 */
 	public void cleanUp() {// call when closing
-		gl.glDeleteFramebuffers(1, frameBufferArray, 0);
-		gl.glDeleteTextures(1, textureArray, 0);
-		gl.glDeleteTextures(1, depthBufferTextureArray, 0);
-		gl.glDeleteRenderbuffers(1, depthBufferArray, 0);
+		GLES20.glDeleteFramebuffers(1, frameBufferArray, 0);
+		GLES20.glDeleteTextures(1, textureArray, 0);
+		GLES20.glDeleteTextures(1, depthBufferTextureArray, 0);
+		GLES20.glDeleteRenderbuffers(1, depthBufferArray, 0);
 	}
 
 	/**
@@ -95,8 +90,8 @@ public class FrameBufferObject {
 	 * Unbind current frame buffer.
 	 */
 	public void unbindCurrentFrameBuffer() {// call to switch to default frame buffer
-		gl.glBindFramebuffer(GL4.GL_FRAMEBUFFER, 0);
-		gl.glViewport(0, 0, width, height);
+		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+		GLES20.glViewport(0, 0, width, height);
 	}
 
 	/**
@@ -135,9 +130,9 @@ public class FrameBufferObject {
 	 * @param height the height
 	 */
 	private void bindFrameBuffer(final int frameBuffer, final int width, final int height) {
-		gl.glBindTexture(GL4.GL_TEXTURE_2D, 0);// To make sure the texture isn't bound
-		gl.glBindFramebuffer(GL4.GL_FRAMEBUFFER, frameBuffer);
-		gl.glViewport(0, 0, width, height);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);// To make sure the texture isn't bound
+		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameBuffer);
+		GLES20.glViewport(0, 0, width, height);
 	}
 
 	/**
@@ -148,12 +143,11 @@ public class FrameBufferObject {
 	private int createFrameBuffer() {
 		// Only clean up a previously valid FBO; frameBufferArray[0] == -1 means not yet allocated.
 		if (frameBufferArray[0] != -1) { cleanUp(); }
-		gl.glGenFramebuffers(1, frameBufferArray, 0);
+		GLES20.glGenFramebuffers(1, frameBufferArray, 0);
 		// generate name for frame buffer
-		gl.glBindFramebuffer(GL4.GL_FRAMEBUFFER, frameBufferArray[0]);
+		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameBufferArray[0]);
 		// create the framebuffer
-		gl.glDrawBuffer(GL4.GL_COLOR_ATTACHMENT0);
-		// indicate that we will always render to color attachment 0
+		// glDrawBuffer is not available in GLES20; color attachment 0 is used by default
 		return frameBufferArray[0];
 	}
 
@@ -165,15 +159,15 @@ public class FrameBufferObject {
 	 * @return the int
 	 */
 	private int createTextureAttachment(final int width, final int height) {
-		gl.glGenTextures(1, textureArray, 0);
-		gl.glBindTexture(GL4.GL_TEXTURE_2D, textureArray[0]);
-		gl.glTexParameteri(GL4.GL_TEXTURE_2D, GL4.GL_TEXTURE_MAG_FILTER, GL4.GL_LINEAR);
+		GLES20.glGenTextures(1, textureArray, 0);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureArray[0]);
+		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
 		// Use GL_LINEAR (not a mipmap filter) for a render-target texture.
 		// GL_LINEAR_MIPMAP_LINEAR would require glGenerateMipmap and makes the FBO incomplete without it.
-		gl.glTexParameteri(GL4.GL_TEXTURE_2D, GL4.GL_TEXTURE_MIN_FILTER, GL4.GL_LINEAR);
-		gl.glTexImage2D(GL4.GL_TEXTURE_2D, 0, GL4.GL_RGB, width, height, 0, GL4.GL_RGB, GL4.GL_UNSIGNED_BYTE,
+		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+		GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGB, width, height, 0, GLES20.GL_RGB, GLES20.GL_UNSIGNED_BYTE,
 				(ByteBuffer) null);
-		gl.glFramebufferTexture2D(GL4.GL_FRAMEBUFFER, GL4.GL_COLOR_ATTACHMENT0, GL4.GL_TEXTURE_2D, textureArray[0], 0);
+		GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, textureArray[0], 0);
 		return textureArray[0];
 	}
 
@@ -196,10 +190,10 @@ public class FrameBufferObject {
 	 * @return the int
 	 */
 	private int createDepthBufferAttachment(final int width, final int height) {
-		gl.glGenRenderbuffers(1, depthBufferArray, 0);
-		gl.glBindRenderbuffer(GL4.GL_RENDERBUFFER, depthBufferArray[0]);
-		gl.glRenderbufferStorage(GL4.GL_RENDERBUFFER, GL4.GL_DEPTH_COMPONENT, width, height);
-		gl.glFramebufferRenderbuffer(GL4.GL_FRAMEBUFFER, GL4.GL_DEPTH_ATTACHMENT, GL4.GL_RENDERBUFFER,
+		GLES20.glGenRenderbuffers(1, depthBufferArray, 0);
+		GLES20.glBindRenderbuffer(GLES20.GL_RENDERBUFFER, depthBufferArray[0]);
+		GLES20.glRenderbufferStorage(GLES20.GL_RENDERBUFFER, GLES20.GL_DEPTH_COMPONENT, width, height);
+		GLES20.glFramebufferRenderbuffer(GLES20.GL_FRAMEBUFFER, GLES20.GL_DEPTH_ATTACHMENT, GLES20.GL_RENDERBUFFER,
 				depthBufferArray[0]);
 		return depthBufferArray[0];
 	}

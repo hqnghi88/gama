@@ -10,13 +10,12 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.helpers;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
-import com.jogamp.common.nio.Buffers;
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL4;
-import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
+import android.opengl.GLES20;
 
 import gama.api.types.color.GamaColorFactory;
 import gama.api.types.color.IColor;
@@ -31,7 +30,7 @@ import gama.ui.display.opengl4.renderer.shaders.AbstractPostprocessingShader;
 import gama.ui.display.opengl4.renderer.shaders.AbstractShader;
 import gama.ui.display.opengl4.renderer.shaders.FrameBufferObject;
 import gama.ui.display.opengl4.renderer.shaders.KeystoneShaderProgram;
-import gama.ui.shared.utils.DPIHelper;
+import gama.ui.display.opengl4.view.GamaGLCanvas;
 
 /**
  * The Class KeystoneHelper.
@@ -70,7 +69,7 @@ public class KeystoneHelper extends AbstractRendererHelper {
 			GamaColorFactory.get("gamablue").withAlpha(0.3), GamaColorFactory.get("black").withAlpha(0.3) };
 
 	/** The ib idx buff. */
-	final IntBuffer ibIdxBuff = Buffers.newDirectIntBuffer(new int[] { 0, 1, 2, 0, 2, 3 });
+	final IntBuffer ibIdxBuff = IntBuffer.wrap(new int[] { 0, 1, 2, 0, 2, 3 });
 
 	/**
 	 * Instantiates a new keystone helper.
@@ -153,24 +152,18 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	 * Dispose.
 	 */
 	public void dispose() {
-		final GL4 gl = getGL();
 		if (fboScene != null) { fboScene.cleanUp(); }
-		if (gl != null) {
-			gl.glDeleteBuffers(3, new int[] { indexBufferIndex, verticesBufferIndex, uvMappingBufferIndex }, 0);
-		}
+		GLES20.glDeleteBuffers(3, new int[] { indexBufferIndex, verticesBufferIndex, uvMappingBufferIndex }, 0);
 	}
 
 	/**
 	 * Begin render to texture.
 	 */
 	public void beginRenderToTexture() {
-		final GL4 gl = getGL();
-		gl.glClearColor(0, 0, 0, 1.0f);
-		gl.glClear(GL.GL_STENCIL_BUFFER_BIT | GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
+		GLES20.glClearColor(0, 0, 0, 1.0f);
+		GLES20.glClear(GLES20.GL_STENCIL_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
 		if (fboScene == null) {
-			final var monitor = renderer.getCanvas().getMonitor();
-			fboScene = new FrameBufferObject(gl, DPIHelper.autoScaleUp(monitor, getViewWidth()),
-					DPIHelper.autoScaleUp(monitor, getViewHeight()));
+			fboScene = new FrameBufferObject(getViewWidth(), getViewHeight());
 		}
 		// redirect the rendering to the fbo_scene (will be rendered later, as a texture)
 		fboScene.bindFrameBuffer();
@@ -287,10 +280,10 @@ public class KeystoneHelper extends AbstractRendererHelper {
 
 		// Use pixel-space ortho so rectangles and text share the same coordinate system.
 		// TextDrawer's overlay projection is also [0,W]×[0,H], so no conflict.
-		openGL.pushIdentity(GLMatrixFunc.GL_PROJECTION);
+		openGL.pushIdentity(1);
 		openGL.getCurrentMatrixStack().ortho(0, W, 0, H, 1, -1);
 		final boolean previous = openGL.setObjectLighting(false);
-		openGL.push(GLMatrixFunc.GL_MODELVIEW);
+		openGL.push(0);
 
 		vertices.visit((id, x, y, z) -> {
 			final String text = floor4Digit(getCoords()[id].getX()) + "," + floor4Digit(getCoords()[id].getY());
@@ -316,9 +309,9 @@ public class KeystoneHelper extends AbstractRendererHelper {
 			openGL.drawScreenText(text, KEYSTONE_FONT, xTextPx, yTextPx);
 		}, 4, true);
 
-		openGL.pop(GLMatrixFunc.GL_MODELVIEW);
+		openGL.pop(0);
 		openGL.setObjectLighting(previous);
-		openGL.pop(GLMatrixFunc.GL_PROJECTION);
+		openGL.pop(1);
 	}
 
 	/**
@@ -352,11 +345,10 @@ public class KeystoneHelper extends AbstractRendererHelper {
 			// build the surface
 			createScreenSurface();
 			// draw
-			final GL4 gl = getGL();
-			gl.glDrawElements(GL.GL_TRIANGLES, 6, GL.GL_UNSIGNED_INT, 0);
+			GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, GLES20.GL_UNSIGNED_INT, 0);
 			theShader.stop();
-			gl.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0);
-			gl.glBindBuffer(GL.GL_ARRAY_BUFFER, 0);
+			GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0);
+			GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
 		}
 
 	}
@@ -367,11 +359,10 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	 * @return the shader
 	 */
 	public KeystoneShaderProgram getShader() {
-		final GL4 gl = getGL();
 		if (shader == null) {
-			shader = new KeystoneShaderProgram(gl, "keystoneVertexShader2", "keystoneFragmentShader2");
+			shader = new KeystoneShaderProgram("keystoneVertexShader2", "keystoneFragmentShader2");
 			final int[] handles = new int[3];
-			gl.glGenBuffers(3, handles, 0);
+			GLES20.glGenBuffers(3, handles, 0);
 			uvMappingBufferIndex = handles[0];
 			verticesBufferIndex = handles[1];
 			indexBufferIndex = handles[2];
@@ -394,7 +385,6 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	 * Creates the screen surface.
 	 */
 	public void createScreenSurface() {
-		final GL4 gl = getGL();
 		// Keystoning computation (cf
 		// http://www.bitlush.com/posts/arbitrary-quadrilaterals-in-opengl-es-2-0)
 		// transform the coordinates [0,1] --> [-1,+1]
@@ -437,8 +427,8 @@ public class KeystoneHelper extends AbstractRendererHelper {
 
 		getOpenGL().bindTexture(fboScene.getFBOTexture());
 		// Select the VBO, GPU memory data, to use for colors
-		gl.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, indexBufferIndex);
-		gl.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, 24, ibIdxBuff, GL.GL_STATIC_DRAW);
+		GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, indexBufferIndex);
+		GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, 24, ibIdxBuff, GLES20.GL_STATIC_DRAW);
 		ibIdxBuff.rewind();
 	}
 
@@ -456,17 +446,18 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	 */
 	private void storeAttributes(final int shaderAttributeType, final int bufferIndex, final int size,
 			final float[] data) {
-		final GL4 gl = getGL();
 		// Select the VBO, GPU memory data, to use for data
-		gl.glBindBuffer(GL.GL_ARRAY_BUFFER, bufferIndex);
+		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, bufferIndex);
 		// Associate Vertex attribute with the last bound VBO
-		gl.glVertexAttribPointer(shaderAttributeType, size, GL.GL_FLOAT, false, 0, 0 /* offset */);
+		GLES20.glVertexAttribPointer(shaderAttributeType, size, GLES20.GL_FLOAT, false, 0, 0 /* offset */);
 		// compute the total size of the buffer :
 		final int numBytes = data.length * 4;
-		gl.glBufferData(GL.GL_ARRAY_BUFFER, numBytes, null, GL.GL_STATIC_DRAW);
-		final FloatBuffer fbData = Buffers.newDirectFloatBuffer(data);
-		gl.glBufferSubData(GL.GL_ARRAY_BUFFER, 0, numBytes, fbData);
-		gl.glEnableVertexAttribArray(shaderAttributeType);
+		GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, numBytes, null, GLES20.GL_STATIC_DRAW);
+		final FloatBuffer fbData = ByteBuffer.allocateDirect(data.length * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+		fbData.put(data);
+		fbData.position(0);
+		GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER, 0, numBytes, fbData);
+		GLES20.glEnableVertexAttribArray(shaderAttributeType);
 	}
 
 	/**
@@ -573,8 +564,7 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	 */
 	public void reshape(final int width, final int height) {
 		if (fboScene != null) {
-			fboScene.setDisplayDimensions(DPIHelper.autoScaleUp(renderer.getCanvas().getMonitor(), width),
-					DPIHelper.autoScaleUp(renderer.getCanvas().getMonitor(), height));
+			fboScene.setDisplayDimensions(width, height);
 		}
 
 	}

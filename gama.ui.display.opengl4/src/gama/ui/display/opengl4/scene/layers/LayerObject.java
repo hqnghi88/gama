@@ -14,8 +14,7 @@ import java.util.ArrayList;
 
 import org.locationtech.jts.geom.Geometry;
 
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
+import android.opengl.GLES20;
 
 import gama.annotations.constants.IKeyword;
 import gama.api.gaml.expressions.IExpression;
@@ -254,13 +253,13 @@ public class LayerObject {
 	 */
 	public void draw(final OpenGL gl) {
 		if (hasDepth()) {
-			gl.getGL().glEnable(GL.GL_DEPTH_TEST);
+			GLES20.glEnable(GLES20.GL_DEPTH_TEST);
 		} else {
 			// Addition to fix #2228 and #2222
 			gl.suspendZTranslation();
-			gl.getGL().glDisable(GL.GL_DEPTH_TEST);
+			GLES20.glDisable(GLES20.GL_DEPTH_TEST);
 		}
-		gl.push(GLMatrixFunc.GL_MODELVIEW);
+		gl.push(0);
 		try {
 			doDrawing(gl);
 		} finally {
@@ -367,7 +366,7 @@ public class LayerObject {
 	 *            the gl
 	 */
 	protected void stopDrawing(final OpenGL gl) {
-		gl.pop(GLMatrixFunc.GL_MODELVIEW);
+		gl.pop(0);
 	}
 
 	/**

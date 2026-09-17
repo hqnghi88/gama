@@ -12,8 +12,6 @@ package gama.ui.display.opengl4.scene;
 
 import org.locationtech.jts.geom.Geometry;
 
-import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
-
 import gama.api.types.map.GamaMapFactory;
 import gama.api.types.map.IMap;
 import gama.api.types.matrix.IField;
@@ -120,7 +118,7 @@ public class ModelScene {
 		final double zIncrement = objectNumber < 1 || !GamaPreferences.Displays.OPENGL_Z_FIGHTING.getValue() ? 0d
 				: maxZ / objectNumber * GamaPreferences.Displays.OPENGL_Z_FACTOR.getValue();
 
-		gl.push(GLMatrixFunc.GL_MODELVIEW);
+		gl.push(0);
 		gl.setZIncrement(renderer.getData().isOrtho() ? 0D : zIncrement);
 		// AD called here so that it is inside the keystone drawing. See #3285
 		gl.rotateModel();
@@ -130,7 +128,7 @@ public class ModelScene {
 				// See Issue #3857
 				if (GamaPreferences.Displays.OPENGL_Z_FIGHTING.getValue()) { gl.translateBy(0, 0, zIncrement); }
 				// AD added to prevent overlays to rotate
-				if (layer.isOverlay()) { gl.pushIdentity(GLMatrixFunc.GL_MODELVIEW); }
+				if (layer.isOverlay()) { gl.pushIdentity(0); }
 				try {
 					if (renderer.getPickingHelper().isPicking() && !layer.isPickable()) { continue; }
 					layer.draw(gl);
@@ -138,7 +136,7 @@ public class ModelScene {
 					DEBUG.ERR("Runtime error " + r.getMessage() + " in OpenGL loop");
 					r.printStackTrace();
 				} finally {
-					if (layer.isOverlay()) { gl.pop(GLMatrixFunc.GL_MODELVIEW); }
+					if (layer.isOverlay()) { gl.pop(0); }
 				}
 			}
 		}
@@ -146,7 +144,7 @@ public class ModelScene {
 		gl.setZIncrement(0);
 		rendered = true;
 		// renderer.getSurface().getOutput().setRendered(true);
-		gl.pop(GLMatrixFunc.GL_MODELVIEW);
+		gl.pop(0);
 	}
 
 	// /**

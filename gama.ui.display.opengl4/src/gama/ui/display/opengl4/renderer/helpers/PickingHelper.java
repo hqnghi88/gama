@@ -10,12 +10,11 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.helpers;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 
-import com.jogamp.common.nio.Buffers;
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL4;
-import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
+import android.opengl.GLES20;
 
 import gama.api.ui.layers.IDrawingAttributes;
 import gama.dev.DEBUG;
@@ -32,7 +31,7 @@ public class PickingHelper extends AbstractRendererHelper {
 	}
 
 	/** The select buffer. */
-	protected final IntBuffer selectBuffer = Buffers.newDirectIntBuffer(1024);
+	protected final IntBuffer selectBuffer = IntBuffer.wrap(new int[1024]);
 
 	/**
 	 * Instantiates a new picking helper.
@@ -184,12 +183,12 @@ public class PickingHelper extends AbstractRendererHelper {
 		try {
 			final CameraHelper camera = getRenderer().getCameraHelper();
 			final int[] viewport = new int[4];
-			getGL().glGetIntegerv(com.jogamp.opengl.GL.GL_VIEWPORT, viewport, 0);
+			GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, viewport, 0);
 			pickX = (int) camera.getMousePosition().getX();
 			pickY = viewport[3] - (int) camera.getMousePosition().getY(); // GL y is bottom-up
 
 			// Set the full perspective projection first
-			openGL.pushIdentity(GLMatrixFunc.GL_PROJECTION);
+			openGL.pushIdentity(1);
 			openGL.updatePerspective();
 
 			// Now pre-multiply the projection stack with the pick-window transform.
@@ -206,7 +205,7 @@ public class PickingHelper extends AbstractRendererHelper {
 		} catch (final Throwable e) {
 			DEBUG.ERR("in beginPicking", e);
 		} finally {
-			openGL.matrixMode(GLMatrixFunc.GL_MODELVIEW);
+			openGL.matrixMode(0);
 		}
 	}
 
@@ -215,18 +214,17 @@ public class PickingHelper extends AbstractRendererHelper {
 	 * colour buffer. The object index is encoded in the red (low byte) and green (high byte) channels by
 	 * {@link OpenGL#registerForSelection(int)}. A blue value of {@code 0xFF} signals the background.
 	 *
-	 * <p>{@link GL4#glFinish()} is called before {@link GL4#glReadPixels} to guarantee the picking-pass
+	 * <p>{@code GLES20.glFinish()} is called before {@code GLES20.glReadPixels} to guarantee the picking-pass
 	 * draw commands are complete before the readback, which is required on async/multi-threaded drivers.</p>
 	 */
 	public void endPicking() {
-		final GL4 gl = getGL();
 		final OpenGL openGL = getOpenGL();
 		int selectedIndex = PickingHelper.NONE;
 		try {
 			// Ensure the picking pass is fully rendered before reading back
-			gl.glFinish();
-			final java.nio.ByteBuffer pixel = com.jogamp.common.nio.Buffers.newDirectByteBuffer(4);
-			gl.glReadPixels(pickX, pickY, 1, 1, GL4.GL_RGBA, com.jogamp.opengl.GL.GL_UNSIGNED_BYTE, pixel);
+			GLES20.glFinish();
+			final ByteBuffer pixel = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+			GLES20.glReadPixels(pickX, pickY, 1, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixel);
 			final int r = pixel.get(0) & 0xFF;
 			final int g = pixel.get(1) & 0xFF;
 			final int b = pixel.get(2) & 0xFF;
@@ -240,8 +238,8 @@ public class PickingHelper extends AbstractRendererHelper {
 			DEBUG.ERR("in endPicking", e);
 		} finally {
 			// Restore the projection matrix pushed by beginPicking()
-			openGL.pop(GLMatrixFunc.GL_PROJECTION);
-			openGL.matrixMode(GLMatrixFunc.GL_MODELVIEW);
+			openGL.pop(1);
+			openGL.matrixMode(0);
 			setPickedIndex(selectedIndex);
 		}
 	}

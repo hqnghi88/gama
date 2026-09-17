@@ -10,7 +10,7 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.helpers;
 
-import com.jogamp.opengl.GL;
+import android.opengl.GLES20;
 
 import gama.api.types.color.GamaColorFactory;
 import gama.api.types.color.IColor;
@@ -198,7 +198,7 @@ public class LightHelper extends AbstractRendererHelper {
 					final double[] beginPoint = { i * worldWidth / maxI, -j * worldHeight / maxJ, size * 10 };
 					final double[] endPoint = { i * worldWidth / maxI + dir.getX() * size * 3,
 							-(j * worldHeight / maxJ) - dir.getY() * size * 3, size * 10 + dir.getZ() * size * 3 };
-					openGL.beginDrawing(GL.GL_LINES);
+					openGL.beginDrawing(GLES20.GL_LINES);
 					openGL.drawVertex(0, beginPoint[0], beginPoint[1], beginPoint[2]);
 					openGL.drawVertex(0, endPoint[0], endPoint[1], endPoint[2]);
 					openGL.endDrawing();
