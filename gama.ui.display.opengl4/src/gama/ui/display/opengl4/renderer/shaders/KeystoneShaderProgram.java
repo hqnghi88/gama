@@ -10,7 +10,7 @@
  ********************************************************************************************************/
 package gama.ui.display.opengl4.renderer.shaders;
 
-import com.jogamp.opengl.GL4;
+import gama.ui.display.opengl4.renderer.gl.GLWrapper;
 
 /**
  * The Class KeystoneShaderProgram.
@@ -24,7 +24,7 @@ public class KeystoneShaderProgram extends AbstractPostprocessingShader {
 	 * @param vertexFile the vertex file
 	 * @param fragmentFile the fragment file
 	 */
-	public KeystoneShaderProgram(final GL4 gl, final String vertexFile, final String fragmentFile) {
+	public KeystoneShaderProgram(final GLWrapper gl, final String vertexFile, final String fragmentFile) {
 		super(gl, vertexFile, fragmentFile);
 	}
 

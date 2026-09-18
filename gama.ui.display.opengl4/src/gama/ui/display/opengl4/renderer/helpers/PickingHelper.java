@@ -21,6 +21,7 @@ import gama.api.ui.layers.IDrawingAttributes;
 import gama.dev.DEBUG;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
 
 /**
  * The Class PickingHelper.
@@ -226,7 +227,7 @@ public class PickingHelper extends AbstractRendererHelper {
 			// Ensure the picking pass is fully rendered before reading back
 			gl.glFinish();
 			final java.nio.ByteBuffer pixel = com.jogamp.common.nio.Buffers.newDirectByteBuffer(4);
-			gl.glReadPixels(pickX, pickY, 1, 1, GL4.GL_RGBA, com.jogamp.opengl.GL.GL_UNSIGNED_BYTE, pixel);
+			gl.glReadPixels(pickX, pickY, 1, 1, GLConstants.GL_RGBA, com.jogamp.opengl.GL.GL_UNSIGNED_BYTE, pixel);
 			final int r = pixel.get(0) & 0xFF;
 			final int g = pixel.get(1) & 0xFF;
 			final int b = pixel.get(2) & 0xFF;

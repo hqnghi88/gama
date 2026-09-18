@@ -21,7 +21,6 @@ import org.locationtech.jts.geom.Polygon;
 
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL2GL3;
 import com.jogamp.opengl.GL4;
 import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.fixedfunc.GLMatrixFunc;
@@ -53,6 +52,9 @@ import gama.core.util.file.GamaGeometryFile;
 import gama.dev.DEBUG;
 import gama.gaml.operators.Maths;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
+import gama.ui.display.opengl4.renderer.gl.GLWrapper;
+import gama.ui.display.opengl4.renderer.gl.JoglGLWrapper;
 import gama.ui.display.opengl4.renderer.caches.GeometryCache;
 import gama.ui.display.opengl4.renderer.caches.GeometryCache.BuiltInGeometry;
 import gama.ui.display.opengl4.renderer.caches.ITextureCache;
@@ -109,7 +111,7 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 
 	/** The gl. */
 	// The real openGL context
-	private GL4 gl;
+	private GLWrapper gl;
 
 	/** The basic shader. */
 	private BasicShader basicShader;
@@ -168,7 +170,7 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	private int viewWidth, viewHeight;
 
 	/** The current polygon mode. */
-	private int currentPolygonMode = GL4.GL_FILL;
+	private int currentPolygonMode = GLConstants.GL_FILL;
 
 	/** The current color. */
 	private IColor currentColor = GamaColorFactory.getWithDoubles(1, 1, 1, 1);
@@ -346,7 +348,23 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	}
 
 	@Override
-	public GL4 getGL() { return gl; }
+	public GL4 getGL() { return getRawGL(); }
+
+	/**
+	 * Returns the underlying raw {@link GL4} from the {@link JoglGLWrapper}, for backward
+	 * compatibility with desktop code that still needs a concrete JOGL {@code GL4} instance.
+	 *
+	 * @return the raw {@link GL4}, or {@code null} if the wrapper is not a {@link JoglGLWrapper}
+	 */
+	public GL4 getRawGL() {
+		if (gl instanceof JoglGLWrapper jw) { return jw.getGL4(); }
+		return null;
+	}
+
+	/**
+	 * Returns the {@link GLWrapper} abstraction for this renderer.
+	 */
+	public GLWrapper getGLWrapper() { return gl; }
 
 	/**
 	 * Sets the gl2.
@@ -354,7 +372,7 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	 * @param gl2
 	 *            the new gl2
 	 */
-	public void setGL4(final GL4 gl2) { this.gl = gl2; }
+	public void setGL4(final GL4 gl2) { this.gl = new JoglGLWrapper(gl2); }
 
 	/**
 	 * Reshapes the GL world to comply with a new view size and computes the resulting ratios between pixels and world
@@ -371,14 +389,14 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	public void reshape(final GL4 newGL, final int width, final int height) {
 		setGL4(newGL);
 		if (basicShader == null) {
-			basicShader = new BasicShader(newGL);
+			basicShader = new BasicShader(gl);
 			basicShader.start();
 
 			int[] vao = new int[1];
-			newGL.glGenVertexArrays(1, vao, 0);
+			gl.glGenVertexArrays(1, vao, 0);
 			vaoId = vao[0];
-			newGL.glBindVertexArray(vaoId);
-			newGL.glGenBuffers(4, vboIds, 0);
+			gl.glBindVertexArray(vaoId);
+			gl.glGenBuffers(4, vboIds, 0);
 		}
 		// newGL.glViewport(0, 0, width, height);
 		viewWidth = width;
@@ -742,7 +760,7 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	private final FloatBuffer currentNormals = Buffers.newDirectFloatBuffer(INITIAL_BUFFER_SIZE);
 
 	/** The current draw style. */
-	private int currentDrawStyle = GL4.GL_TRIANGLES;
+	private int currentDrawStyle = GLConstants.GL_TRIANGLES;
 
 	/** The current vertex count. */
 	private int currentVertexCount = 0;
@@ -1581,7 +1599,7 @@ public class OpenGL extends AbstractRendererHelper implements ITesselator {
 	 *            the new polygon mode
 	 */
 	public void updatePolygonMode() {
-		int newPolygonMode = isWireframe() ? GL2GL3.GL_LINE : GL2GL3.GL_FILL;
+		int newPolygonMode = isWireframe() ? GLConstants.GL_LINE : GLConstants.GL_FILL;
 		if (newPolygonMode != currentPolygonMode) {
 			currentPolygonMode = newPolygonMode;
 			gl.glPolygonMode(GL.GL_FRONT_AND_BACK, currentPolygonMode);

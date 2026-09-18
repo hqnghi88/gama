@@ -13,12 +13,11 @@ package gama.ui.display.opengl4.renderer.shaders;
 import java.io.InputStream;
 import java.util.Scanner;
 
-import com.jogamp.opengl.GL;
-import com.jogamp.opengl.GL4;
-
 import gama.api.types.geometry.GamaPointFactory;
 import gama.api.types.geometry.IPoint;
 import gama.dev.DEBUG;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
+import gama.ui.display.opengl4.renderer.gl.GLWrapper;
 
 /**
  * The Class AbstractShader.
@@ -26,7 +25,7 @@ import gama.dev.DEBUG;
 public abstract class AbstractShader {
 
 	/** The gl. */
-	protected GL4 gl;
+	protected GLWrapper gl;
 
 	/** The is overlay. */
 	protected boolean isOverlay = false;
@@ -62,7 +61,7 @@ public abstract class AbstractShader {
 	 * @param fragmentFile
 	 *            the fragment file
 	 */
-	protected AbstractShader(final GL4 gl, final String vertexFile, final String fragmentFile) {
+	protected AbstractShader(final GLWrapper gl, final String vertexFile, final String fragmentFile) {
 		this.gl = gl;
 		InputStream vertexInputStream, fragmentInputStream;
 
@@ -80,8 +79,8 @@ public abstract class AbstractShader {
 			return;
 		}
 
-		vertexShaderID = loadShader(vertexInputStream, GL4.GL_VERTEX_SHADER);
-		fragmentShaderID = loadShader(fragmentInputStream, GL4.GL_FRAGMENT_SHADER);
+		vertexShaderID = loadShader(vertexInputStream, GLConstants.GL_VERTEX_SHADER);
+		fragmentShaderID = loadShader(fragmentInputStream, GLConstants.GL_FRAGMENT_SHADER);
 
 		// Each shaderProgram must have
 		// one vertex shader and one fragment shader.
@@ -125,10 +124,10 @@ public abstract class AbstractShader {
 
 			// Check compile status.
 			final int[] compiled = new int[1];
-			gl.glGetShaderiv(shaderID, GL4.GL_COMPILE_STATUS, compiled, 0);
+			gl.glGetShaderiv(shaderID, GLConstants.GL_COMPILE_STATUS, compiled, 0);
 			if (compiled[0] == 0) {
 				final int[] logLength = new int[1];
-				gl.glGetShaderiv(shaderID, GL4.GL_INFO_LOG_LENGTH, logLength, 0);
+				gl.glGetShaderiv(shaderID, GLConstants.GL_INFO_LOG_LENGTH, logLength, 0);
 
 				final byte[] log = new byte[logLength[0]];
 				gl.glGetShaderInfoLog(shaderID, logLength[0], (int[]) null, 0, log, 0);

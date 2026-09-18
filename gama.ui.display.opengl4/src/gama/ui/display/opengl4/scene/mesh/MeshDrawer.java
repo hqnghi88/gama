@@ -30,6 +30,7 @@ import gama.core.outputs.layers.MeshLayerData;
 import gama.dev.DEBUG;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.scene.ObjectDrawer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
 import one.util.streamex.DoubleStreamEx;
 
 /**
@@ -424,7 +425,7 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 		final var ogl = gl.getGL();
 		// Forcing alpha
 		ogl.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
-		ogl.glBlendFunc(GL4.GL_CONSTANT_ALPHA, GL4.GL_ONE_MINUS_CONSTANT_ALPHA);
+		ogl.glBlendFunc(GLConstants.GL_CONSTANT_ALPHA, GLConstants.GL_ONE_MINUS_CONSTANT_ALPHA);
 		gl.beginDrawing(GL.GL_TRIANGLES);
 		for (var index = 0; index < indexBuffer.limit(); index++) {
 			var i = indexBuffer.get(index);
@@ -512,7 +513,7 @@ public class MeshDrawer extends ObjectDrawer<MeshObject> {
 		final var ogl = gl.getGL();
 		// Forcing alpha
 		ogl.glBlendColor(0.0f, 0.0f, 0.0f, (float) gl.getCurrentObjectAlpha());
-		ogl.glBlendFunc(GL4.GL_CONSTANT_ALPHA, GL4.GL_ONE_MINUS_CONSTANT_ALPHA);
+		ogl.glBlendFunc(GLConstants.GL_CONSTANT_ALPHA, GLConstants.GL_ONE_MINUS_CONSTANT_ALPHA);
 
 		// VBO + IBO + VAO management (GL4 core: a VAO is required)
 		// vboIds: 0=Vertex, 1=Normal, 2=Tex, 3=Color, 4=LineColor, 5=IndexBuffer(IBO)

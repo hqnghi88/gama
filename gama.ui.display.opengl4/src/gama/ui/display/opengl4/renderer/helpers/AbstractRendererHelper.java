@@ -15,6 +15,7 @@ import com.jogamp.opengl.GL4;
 import gama.api.ui.displays.IDisplayData;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLWrapper;
 import gama.ui.display.opengl4.view.GamaGLCanvas;
 import gama.ui.display.opengl4.view.SWTOpenGLDisplaySurface;
 
@@ -73,6 +74,13 @@ public abstract class AbstractRendererHelper {
 	 * @return the gl
 	 */
 	protected GL4 getGL() { return renderer.getOpenGLHelper().getGL(); }
+
+	/**
+	 * Gets the GLWrapper for cross-platform GL calls.
+	 *
+	 * @return the GLWrapper
+	 */
+	protected GLWrapper getGLWrapper() { return renderer.getOpenGLHelper().getGLWrapper(); }
 
 	/**
 	 * Gets the open GL.

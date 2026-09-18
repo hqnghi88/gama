@@ -33,6 +33,7 @@ import gama.gaml.operators.Maths;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.camera.IMultiListener;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
 import gama.ui.shared.utils.ViewsHelper;
 import gama.ui.shared.utils.WorkbenchHelper;
 import gama.ui.shared.views.toolbar.IToolbarDecoratedView.ICameraHelper;
@@ -795,7 +796,7 @@ public class CameraHelper extends AbstractRendererHelper implements IMultiListen
 		final int x = mouse_x;
 		final int y = viewport[3] - mouse_y;
 		pixelDepth.rewind();
-		gl.getGL().glReadPixels(x, y, 1, 1, GL4.GL_DEPTH_COMPONENT, GL.GL_FLOAT, pixelDepth);
+		gl.getGL().glReadPixels(x, y, 1, 1, GLConstants.GL_DEPTH_COMPONENT, GL.GL_FLOAT, pixelDepth);
 		double z = pixelDepth.get(0);
 		if (z == 1d || z == 0d) {
 			getWorldPositionFrom(GamaPointFactory.create(mouse_x, mouse_y), positionInTheWorld);

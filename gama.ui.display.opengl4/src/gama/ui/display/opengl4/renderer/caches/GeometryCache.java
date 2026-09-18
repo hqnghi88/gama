@@ -56,6 +56,7 @@ import gama.dev.DEBUG;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.files.ObjFileDrawer;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
 
 /**
  * The Class GeometryCache. Manages two kinds of geometry caches for the OpenGL 4 renderer:
@@ -460,7 +461,7 @@ public class GeometryCache {
 		put(IShape.Type.ROUNDED, BuiltInGeometry.assemble().bottom(gl.compileAsList(() -> {
 			// Align with SQUARE; see issue #3542
 			gl.translateBy(-.5d, -.5d);
-			gl.beginDrawing(GL4.GL_TRIANGLES);
+			gl.beginDrawing(GLConstants.GL_TRIANGLES);
 			gl.outputNormal(0.0, 0.0, 1.0);
 			for (int i = 0; i < roundedTriangles.length; i += 2) {
 				gl.outputVertex(roundedTriangles[i], roundedTriangles[i + 1], 0.0);
@@ -481,7 +482,7 @@ public class GeometryCache {
 		// The result is analytically smooth regardless of DISPLAY_SLICE_NUMBER preference.
 		final float[] circleTriangles = fanToTriangles(buildCircleOutline(1.0f));
 		put(CIRCLE, BuiltInGeometry.assemble().bottom(gl.compileAsList(() -> {
-			gl.beginDrawing(GL4.GL_TRIANGLES);
+			gl.beginDrawing(GLConstants.GL_TRIANGLES);
 			gl.outputNormal(0.0, 0.0, 1.0);
 			for (int i = 0; i < circleTriangles.length; i += 2) {
 				gl.outputVertex(circleTriangles[i], circleTriangles[i + 1], 0.0);
@@ -691,7 +692,7 @@ public class GeometryCache {
 		gl.getGL().glFrontFace(GL.GL_CCW);
 		for (int l = 0; l < loops; l++) {
 			final double r2 = r1 + dr;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLConstants.GL_TRIANGLE_STRIP);
 			for (int s = 0; s <= slices; s++) {
 				final double a = (s == slices) ? 0.0 : s * da;
 				final double sa = Math.sin(a);
@@ -728,7 +729,7 @@ public class GeometryCache {
 		gl.getGL().glFrontFace(GL.GL_CCW);
 		for (int i = 0; i < stacks; i++) {
 			final double rho = i * drho;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLConstants.GL_TRIANGLE_STRIP);
 			double s = 0.0;
 			for (int j = 0; j <= slices; j++) {
 				final double theta = (j == slices) ? 0.0 : j * dtheta;
@@ -778,7 +779,7 @@ public class GeometryCache {
 		for (int j = 0; j < stacks; j++) {
 			float t = (float) (j * dt);
 			float s = 0.0f;
-			gl.beginDrawing(GL4.GL_TRIANGLE_STRIP);
+			gl.beginDrawing(GLConstants.GL_TRIANGLE_STRIP);
 			for (int i = 0; i <= slices; i++) {
 				final double x = (i == slices) ? 0.0 : Math.sin(i * da);
 				final double y = (i == slices) ? 1.0 : Math.cos(i * da);

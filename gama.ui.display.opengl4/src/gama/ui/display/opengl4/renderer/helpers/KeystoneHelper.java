@@ -27,6 +27,7 @@ import gama.api.utils.geometry.ICoordinates;
 import gama.api.utils.geometry.Scaling3D;
 import gama.ui.display.opengl4.OpenGL;
 import gama.ui.display.opengl4.renderer.IOpenGLRenderer;
+import gama.ui.display.opengl4.renderer.gl.GLConstants;
 import gama.ui.display.opengl4.renderer.shaders.AbstractPostprocessingShader;
 import gama.ui.display.opengl4.renderer.shaders.AbstractShader;
 import gama.ui.display.opengl4.renderer.shaders.FrameBufferObject;
@@ -169,7 +170,7 @@ public class KeystoneHelper extends AbstractRendererHelper {
 		gl.glClear(GL.GL_STENCIL_BUFFER_BIT | GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
 		if (fboScene == null) {
 			final var monitor = renderer.getCanvas().getMonitor();
-			fboScene = new FrameBufferObject(gl, DPIHelper.autoScaleUp(monitor, getViewWidth()),
+			fboScene = new FrameBufferObject(getGLWrapper(), DPIHelper.autoScaleUp(monitor, getViewWidth()),
 					DPIHelper.autoScaleUp(monitor, getViewHeight()));
 		}
 		// redirect the rendering to the fbo_scene (will be rendered later, as a texture)
@@ -369,7 +370,7 @@ public class KeystoneHelper extends AbstractRendererHelper {
 	public KeystoneShaderProgram getShader() {
 		final GL4 gl = getGL();
 		if (shader == null) {
-			shader = new KeystoneShaderProgram(gl, "keystoneVertexShader2", "keystoneFragmentShader2");
+			shader = new KeystoneShaderProgram(getGLWrapper(), "keystoneVertexShader2", "keystoneFragmentShader2");
 			final int[] handles = new int[3];
 			gl.glGenBuffers(3, handles, 0);
 			uvMappingBufferIndex = handles[0];

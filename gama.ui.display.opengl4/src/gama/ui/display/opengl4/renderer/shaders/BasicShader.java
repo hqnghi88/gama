@@ -1,6 +1,6 @@
 package gama.ui.display.opengl4.renderer.shaders;
 
-import com.jogamp.opengl.GL4;
+import gama.ui.display.opengl4.renderer.gl.GLWrapper;
 import org.joml.Matrix4f;
 
 /**
@@ -68,9 +68,9 @@ public class BasicShader extends AbstractShader {
 	 * Instantiates a new BasicShader, compiling and linking {@code glsl/basic.vert} and
 	 * {@code glsl/basic.frag}.
 	 *
-	 * @param gl the GL4 context
+	 * @param gl the GL context
 	 */
-	public BasicShader(final GL4 gl) {
+	public BasicShader(final GLWrapper gl) {
 		super(gl, "glsl/basic.vert", "glsl/basic.frag");
 	}
 
