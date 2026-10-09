@@ -11,9 +11,8 @@
 package gama.core.outputs.layers.charts;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Map;
 
-import gama.annotations.constants.IKeyword;
 import gama.api.gaml.expressions.IExpression;
 import gama.api.gaml.types.Cast;
 import gama.api.gaml.types.Types;
@@ -21,7 +20,6 @@ import gama.api.runtime.scope.IScope;
 import gama.api.types.list.GamaListFactory;
 import gama.api.types.list.IList;
 import gama.api.ui.displays.IChartDataSource;
-import gama.dev.DEBUG;
 
 /**
  * The Class ChartDataSourceList.
@@ -30,6 +28,23 @@ public class ChartDataSourceList extends ChartDataSource {
 
 	/** The currentseries. */
 	ArrayList<String> currentSeriesNames;
+
+	/** The cached series ids. */
+	private final ArrayList<String> cachedSeriesIds = new ArrayList<>();
+
+	/**
+	 * Gets the series id.
+	 *
+	 * @param index
+	 *            the index
+	 * @return the series id
+	 */
+	private String getSeriesId(final int index) {
+		while (cachedSeriesIds.size() <= index) {
+			cachedSeriesIds.add("dl_" + System.identityHashCode(this) + "_" + cachedSeriesIds.size());
+		}
+		return cachedSeriesIds.get(index);
+	}
 
 	/** The legend exp. */
 	IExpression legendExp;
@@ -63,52 +78,66 @@ public class ChartDataSourceList extends ChartDataSource {
 	@Override
 	public void updatevalues(final IScope scope, final int chartCycle) {
 		super.updatevalues(scope, chartCycle);
-		Object o = null;
-		// final Object oname = this.getNameExp();
-		final HashMap<String, Object> barvalues = new HashMap<>();
-		if (this.isUseYErrValues()) { barvalues.put(ChartDataStatement.YERR_VALUES, this.getValueyerr().value(scope)); }
-		if (this.isUseXErrValues()) { barvalues.put(ChartDataStatement.XERR_VALUES, this.getValuexerr().value(scope)); }
-		if (this.isUseYMinMaxValues()) {
-			barvalues.put(ChartDataStatement.XERR_VALUES, this.getValuexerr().value(scope));
+		if (getValue() == null) {
+			updateserielist(scope, chartCycle, GamaListFactory.create());
+			return;
 		}
-		if (this.isUseSizeExp()) { barvalues.put(ChartDataStatement.MARKERSIZE, this.getSizeexp().value(scope)); }
-		if (this.isUseColorExp()) { barvalues.put(IKeyword.COLOR, this.getColorexp().value(scope)); }
-
-		// TODO check same length and list
-
-		updateserielist(scope, chartCycle);
-
-		// int type_val = this.DATA_TYPE_NULL;
-		if (getValue() != null) { o = getValue().value(scope); }
-		// type_val = get_data_type(scope, o);
-
-		if (o instanceof IList) {
-			final IList<?> lval = GamaListFactory.castToList(scope, o);
-
-			if (lval.size() > 0) {
-				for (int i = 0; i < lval.size(); i++) {
-					final Object no = lval.get(i);
-					if (no != null) {
-						updateseriewithvalue(scope, mySeries.get(currentSeriesNames.get(i)), no, chartCycle, barvalues,
-								i);
-					}
+		final Object value = getValue().value(scope);
+		final IList<?> values =
+				value instanceof IList ? GamaListFactory.castToList(scope, value) : GamaListFactory.create();
+		updateserielist(scope, chartCycle, values);
+		if (!values.isEmpty()) {
+			final Map<String, Object> barvalues = computeBarValues(scope);
+			for (int i = 0; i < values.size(); i++) {
+				final Object no = values.get(i);
+				if (no != null) {
+					updateseriewithvalue(scope, mySeries.get(currentSeriesNames.get(i)), no, chartCycle, barvalues, i);
 				}
 			}
 		}
-
 	}
 
+	/**
+	 * Extract legends.
+	 *
+	 * @param scope
+	 *            the scope
+	 * @return the i list
+	 */
 	private IList<?> extractLegends(final IScope scope) {
 		if (legendExp == null) return null;
 		final Object legObj = legendExp.value(scope);
-		if (legObj instanceof Boolean b && !b) return null;
-		if (legObj instanceof String s) return GamaListFactory.create(scope, Types.STRING, s);
-		if (legObj instanceof IList l) return GamaListFactory.castToList(scope, l);
+		switch (legObj) {
+			case Boolean b -> {
+				if (!b) return null;
+				return GamaListFactory.create(scope, Types.STRING);
+			}
+			case String s -> {
+				return GamaListFactory.create(scope, Types.STRING, s);
+			}
+			case IList l -> {
+				return GamaListFactory.castToList(scope, l);
+			}
+			case null, default -> {
+			}
+		}
 		return null;
 	}
 
+	/**
+	 * Gets the legend label.
+	 *
+	 * @param scope
+	 *            the scope
+	 * @param legends
+	 *            the legends
+	 * @param index
+	 *            the index
+	 * @return the legend label
+	 */
 	private String getLegendLabel(final IScope scope, final IList<?> legends, final int index) {
 		if (legends == null) return "";
+		if (legends.isEmpty()) return "Series " + (index + 1);
 		if (index >= legends.size()) return "";
 		final Object val = legends.get(index);
 		if (val == null) return "";
@@ -123,9 +152,7 @@ public class ChartDataSourceList extends ChartDataSource {
 	 * @param chartCycle
 	 *            the chart cycle
 	 */
-	private void updateserielist(final IScope scope, final int chartCycle) {
-		final Object valObj = getValue() == null ? null : getValue().value(scope);
-		final IList<?> values = valObj instanceof IList ? GamaListFactory.castToList(scope, valObj) : GamaListFactory.create();
+	private void updateserielist(final IScope scope, final int chartCycle, final IList<?> values) {
 		final int targetSize = values.size();
 		final IList<?> legends = extractLegends(scope);
 
@@ -133,20 +160,15 @@ public class ChartDataSourceList extends ChartDataSource {
 		currentSeriesNames = new ArrayList<>();
 
 		for (int i = 0; i < targetSize; i++) {
-			String serieId = "dl_" + this.hashCode() + "_" + i;
+			String serieId = getSeriesId(i);
 			currentSeriesNames.add(serieId);
 
 			String legendStr = getLegendLabel(scope, legends, i);
 
-			ChartDataSeries myserie = previousSeries.contains(serieId)
-					? mySeries.get(serieId)
+			ChartDataSeries myserie = previousSeries.contains(serieId) ? mySeries.get(serieId)
 					: myDataset.createOrGetSerie(scope, serieId, this);
-			if (!previousSeries.contains(serieId)) {
-				mySeries.put(serieId, myserie);
-			}
-			if (myserie != null) {
-				myserie.setSeriesLegend(legendStr);
-			}
+			if (!previousSeries.contains(serieId)) { mySeries.put(serieId, myserie); }
+			if (myserie != null) { myserie.setSeriesLegend(legendStr); }
 		}
 
 		if (previousSeries.size() > targetSize) {
@@ -157,15 +179,16 @@ public class ChartDataSourceList extends ChartDataSource {
 			}
 		}
 
-		for (String element : currentSeriesNames) {
-			getDataset().addSerieAtTheEnd(scope, element);
-		}
+		for (String element : currentSeriesNames) { getDataset().addSerieAtTheEnd(scope, element); }
 	}
 
 	@Override
 	public void createInitialSeries(final IScope scope) {
-		updateserielist(scope, 0);
-		inferDatasetProperties(scope);
+		final Object value = getValue() == null ? null : getValue().value(scope);
+		final IList<?> values =
+				value instanceof IList ? GamaListFactory.castToList(scope, value) : GamaListFactory.create();
+		updateserielist(scope, 0, values);
+		inferDatasetProperties(scope, values);
 	}
 
 	/**
@@ -173,18 +196,27 @@ public class ChartDataSourceList extends ChartDataSource {
 	 *
 	 * @param scope
 	 *            the scope
+	 * @param values
+	 *            the current list of values
 	 */
 	public void inferDatasetProperties(final IScope scope) {
-		Object o = null;
-		int type_val = IChartDataSource.DATA_TYPE_NULL;
-		if (this.getValue() != null) {
-			o = this.getValue().value(scope);
-			if (o instanceof IList && GamaListFactory.castToList(scope, o).size() > 0) {
-				final Object o2 = GamaListFactory.castToList(scope, o).get(0);
-				type_val = get_data_type(scope, o2);
-			}
+		final Object value = getValue() == null ? null : getValue().value(scope);
+		final IList<?> values =
+				value instanceof IList ? GamaListFactory.castToList(scope, value) : GamaListFactory.create();
+		inferDatasetProperties(scope, values);
+	}
 
-		}
+	/**
+	 * Infer dataset properties.
+	 *
+	 * @param scope
+	 *            the scope
+	 * @param values
+	 *            the values
+	 */
+	private void inferDatasetProperties(final IScope scope, final IList<?> values) {
+		int type_val = IChartDataSource.DATA_TYPE_NULL;
+		if (!values.isEmpty()) { type_val = get_data_type(scope, values.get(0)); }
 
 		getDataset().getOutput().setDefaultPropertiesFromType(scope, this, type_val);
 

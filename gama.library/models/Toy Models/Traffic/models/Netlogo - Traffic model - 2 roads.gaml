@@ -73,7 +73,7 @@ global torus: true {
 		car a_car <- one_of(cars);
 		ask a_car {
 			color <- col;
-			icon <- _icon;
+			icon_file <- _icon;
 		}	
 		return a_car;	
 	}
@@ -97,13 +97,13 @@ species car skills: [moving] {
 	float acceleration;
 	float deceleration;
 	rgb color;
-	image_file icon;
+	image_file icon_file;
 	pavement my_pavement;
 	int type;
 	
 	init {
 		color <- #blue;
-		icon <- voit_image_file;
+		icon_file <- voit_image_file;
 		speed <- 0.1 +rnd(0.9);
 		speed_limit <- 1.0;
 		speed_min <- 0.0;
@@ -137,8 +137,8 @@ species car skills: [moving] {
 		draw rectangle(1.5,1) rotated_by heading color: color border: #black;
 	}
 	
-	aspect vehicle_icon {
-		draw icon at: location size: 3 rotate: heading ;
+	aspect icon {
+		draw icon_file at: location size: 3 rotate: heading ;
 	}	
 }
 
@@ -154,7 +154,7 @@ experiment NetlogoTrafficmodel type: gui {
 		layout #vertical;
 		display road type:2d antialias:false{
 			grid pavement /*border: #black*/;
-			species car aspect: vehicle_icon;
+			species car aspect: icon;
 			
 		}
 
