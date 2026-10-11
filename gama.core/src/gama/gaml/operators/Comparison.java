@@ -393,16 +393,7 @@ public class Comparison {
 		final GamaFloatMatrix nm =
 				(GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			jdk.incubator.vector.VectorMask<Double> mask = va.compare(jdk.incubator.vector.VectorOperators.GT, b);
-			jdk.incubator.vector.DoubleVector.broadcast(GamaFloatMatrix.SPECIES, 1.0).intoArray(nm.getMatrix(), i,
-					mask);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = m[i] > b ? 1.0 : 0.0; }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = m[i] > b ? 1.0 : 0.0; }
 		return nm;
 	}
 
@@ -452,16 +443,7 @@ public class Comparison {
 		final GamaFloatMatrix nm =
 				(GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			jdk.incubator.vector.VectorMask<Double> mask = va.compare(jdk.incubator.vector.VectorOperators.LT, b);
-			jdk.incubator.vector.DoubleVector.broadcast(GamaFloatMatrix.SPECIES, 1.0).intoArray(nm.getMatrix(), i,
-					mask);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = m[i] < b ? 1.0 : 0.0; }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = m[i] < b ? 1.0 : 0.0; }
 		return nm;
 	}
 
@@ -511,16 +493,7 @@ public class Comparison {
 		final GamaFloatMatrix nm =
 				(GamaFloatMatrix) GamaMatrixFactory.createFloatMatrix(mat.getCols(scope), mat.getRows(scope));
 		final double[] m = mat.getMatrix();
-		int i = 0;
-		int upperBound = GamaFloatMatrix.SPECIES.loopBound(m.length);
-		for (; i < upperBound; i += GamaFloatMatrix.SPECIES.length()) {
-			jdk.incubator.vector.DoubleVector va =
-					jdk.incubator.vector.DoubleVector.fromArray(GamaFloatMatrix.SPECIES, m, i);
-			jdk.incubator.vector.VectorMask<Double> mask = va.compare(jdk.incubator.vector.VectorOperators.EQ, b);
-			jdk.incubator.vector.DoubleVector.broadcast(GamaFloatMatrix.SPECIES, 1.0).intoArray(nm.getMatrix(), i,
-					mask);
-		}
-		for (; i < m.length; i++) { nm.getMatrix()[i] = m[i] == b ? 1.0 : 0.0; }
+		for (int i = 0; i < m.length; i++) { nm.getMatrix()[i] = m[i] == b ? 1.0 : 0.0; }
 		return nm;
 	}
 
