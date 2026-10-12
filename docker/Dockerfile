@@ -36,6 +36,7 @@ ARG GAMA_ZIP_URL
 ENV DEBIAN_FRONTEND=noninteractive \
     GAMA_HOME=/opt/gama \
     GAMA_SOCKET_PORT=10000 \
+    GAMA_INTERNAL_PORT=10001 \
     GAMA_WORKSPACE=/data/workspace \
     GAMA_MEMORY=256m \
     GAMA_XMS=64m \
@@ -43,7 +44,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     GAMA_EXTRA_ARGS=""
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip bash \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip bash socat \
  && rm -rf /var/lib/apt/lists/*
 
 # Download and extract the GAMA distribution. The archive may or may not wrap
@@ -75,7 +76,9 @@ WORKDIR ${GAMA_HOME}
 VOLUME ["/data"]
 EXPOSE 10000
 
+# Probe GAMA's real socket (10001) rather than the shim, so the healthcheck
+# reflects GAMA readiness and not just the always-open public port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD bash -c "exec 3<>/dev/tcp/127.0.0.1/${GAMA_SOCKET_PORT}" || exit 1
+  CMD bash -c "exec 3<>/dev/tcp/127.0.0.1/${GAMA_INTERNAL_PORT}" || exit 1
 
 ENTRYPOINT ["/usr/local/bin/gama-entrypoint.sh"]
