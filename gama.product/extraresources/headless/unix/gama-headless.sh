@@ -140,6 +140,9 @@ for ini_arg in $ini_arguments_raw; do
     case "$ini_arg" in
         -Xms*|-Xmx*|-Xss*) ;;
         -XX:+AlwaysPreTouch) ;;
+        # Drop the GC selection so GAMA_JAVA_OPTS can pick one without
+        # triggering "Multiple garbage collectors selected".
+        -XX:+Use*GC) ;;
         *) ini_arguments+=("$ini_arg") ;;
     esac
 done
