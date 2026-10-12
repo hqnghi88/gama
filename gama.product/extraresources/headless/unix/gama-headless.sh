@@ -27,7 +27,8 @@ else
   fi
 fi
 
-memory="0"
+# Empty means "not set on the command line"; it is resolved below.
+memory=""
 userWorkspace=""
 args=""
 args_array=()
@@ -54,11 +55,22 @@ for arg in "${args_array[@]}"; do
     args+="$arg "
 done
 
-if [[ $memory == "0" ]]; then
-  memory=$(grep Xmx "${gamaIniPath}" || echo "-Xmx4096m")
-else
-  memory=-Xmx$memory
+# Heap size precedence: -m CLI option > GAMA_MEMORY env var > Gama.ini > fallback.
+# Only the -Xmx token is extracted from the .ini, so a "-Xms4G -Xmx16G"
+# line no longer forces a huge initial heap.
+if [[ -z "$memory" && -n "${GAMA_MEMORY:-}" ]]; then
+  memory="$GAMA_MEMORY"
 fi
+if [[ -z "$memory" ]]; then
+  iniMemory=$(grep -oE -- '-Xmx[0-9]+[kKmMgG]?' "${gamaIniPath}" | tail -n 1)
+  memory="${iniMemory#-Xmx}"
+fi
+if [[ -z "$memory" ]]; then
+  memory="4096m"
+fi
+
+# Initial heap: keep it small so the JVM can start on constrained hosts.
+initialHeap="${GAMA_XMS:-512m}"
 
 workspaceCreate=0
 
@@ -118,12 +130,32 @@ fi
 
 mkdir -p "$pathWorkspace"
 
-ini_arguments=$(read_from_ini)
+ini_arguments_raw=$(read_from_ini)
+
+# Heap/stack sizing and pre-touching are handled explicitly below so that the
+# launcher works on hosts with little RAM instead of inheriting the (large)
+# defaults hard-coded in Gama.ini.
+ini_arguments=()
+for ini_arg in $ini_arguments_raw; do
+    case "$ini_arg" in
+        -Xms*|-Xmx*|-Xss*) ;;
+        -XX:+AlwaysPreTouch) ;;
+        *) ini_arguments+=("$ini_arg") ;;
+    esac
+done
+
+# Extra JVM options (e.g. "-XX:+UseSerialGC -XX:MaxMetaspaceSize=96m").
+java_opts=()
+if [[ -n "${GAMA_JAVA_OPTS:-}" ]]; then
+    read -r -a java_opts <<< "$GAMA_JAVA_OPTS"
+fi
 
 if ! $java -cp "${pluginPath}"/org.eclipse.equinox.launcher*.jar \
-        -Xms512m \
-        $memory \
-        ${ini_arguments[@]} \
+        -Xms"$initialHeap" \
+        -Xmx"$memory" \
+        -Djava.awt.headless=true \
+        "${ini_arguments[@]}" \
+        "${java_opts[@]}" \
         org.eclipse.equinox.launcher.Main \
         -configuration "${headlessPath}"/configuration \
         -application gama.headless.product \

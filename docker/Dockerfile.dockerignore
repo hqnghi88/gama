@@ -1,0 +1,11 @@
+# The GAMA distribution is downloaded at build time, so only the fixed launcher
+# and the entrypoint are required from the build context. Ignore everything else
+# (the repository contains several gigabytes of build artifacts).
+**
+!docker/
+!docker/entrypoint.sh
+!gama.product/
+!gama.product/extraresources/
+!gama.product/extraresources/headless/
+!gama.product/extraresources/headless/unix/
+!gama.product/extraresources/headless/unix/gama-headless.sh

@@ -69,11 +69,22 @@ for /f "usebackq delims=" %%a in (..\GAMA.ini) do (
 	) else (
 		if "!line:~0,4!"=="-Xmx" (
 			if "!memory!"=="-1m" ( set "memory=!line:~4!" )
+		) else if "!line:~0,4!"=="-Xms" (
+			rem skip, the initial heap is set explicitly
+		) else if "!line:~0,4!"=="-Xss" (
+			rem skip, the stack size is set explicitly
+		) else if "!line!"=="-XX:+AlwaysPreTouch" (
+			rem skip, incompatible with small heaps
 		) else (
 			set "ini_arguments=!ini_arguments!!line! "
 		)
 	)
 )
+
+REM Heap size precedence: -m CLI option > GAMA_MEMORY env var > Gama.ini > fallback.
+if "%memory%"=="-1m" if defined GAMA_MEMORY set "memory=%GAMA_MEMORY%"
+if "%memory%"=="-1m" set "memory=4096m"
+if not defined GAMA_XMS set "GAMA_XMS=512m"
 
 @echo Will run with these options:
 @echo %ini_arguments%
@@ -88,8 +99,8 @@ IF "%userWorkspace%"=="" (
 
 if exist ..\jdk\ (
 	echo "JDK"
-	call ..\jdk\bin\java -cp !result! -Xms512m -Xmx%memory% !ini_arguments! -Djava.awt.headless=true org.eclipse.equinox.launcher.Main -configuration ./configuration -application gama.headless.product -data "%workDir%" !param!
+	call ..\jdk\bin\java -cp !result! -Xms%GAMA_XMS% -Xmx%memory% !ini_arguments! -Djava.awt.headless=true org.eclipse.equinox.launcher.Main -configuration ./configuration -application gama.headless.product -data "%workDir%" !param!
 ) else (
 	echo "JAVA_HOME"
-  	call "%JAVA_HOME%\bin\java.exe" -cp !result! -Xms512m -Xmx%memory% !ini_arguments! -Djava.awt.headless=true org.eclipse.equinox.launcher.Main -configuration ./configuration -application gama.headless.product -data "%workDir%" !param!
+  	call "%JAVA_HOME%\bin\java.exe" -cp !result! -Xms%GAMA_XMS% -Xmx%memory% !ini_arguments! -Djava.awt.headless=true org.eclipse.equinox.launcher.Main -configuration ./configuration -application gama.headless.product -data "%workDir%" !param!
 )

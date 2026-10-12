@@ -1,0 +1,91 @@
+name: "[./.github/workflows/docker-publish.yaml]"
+
+# Builds docker/Dockerfile and publishes the headless GAMA socket server image
+# to the GitHub Container Registry (ghcr.io), where Render.com can pull it.
+#
+# The package is published under the repository namespace, e.g.:
+#   ghcr.io/<owner>/<repo>:latest
+#
+# NOTE: GHCR packages are private by default. To let Render pull the image
+# anonymously, open the package settings (Repo > Packages > the image >
+# Package settings) and change its visibility to "Public", or configure the
+# registry credentials in Render.
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+    paths:
+      - 'docker/**'
+      - 'gama.product/extraresources/headless/unix/gama-headless.sh'
+      - '.github/workflows/docker-publish.yaml'
+  workflow_dispatch:
+    inputs:
+      GAMA_ZIP_URL:
+        description: "GAMA Linux release zip URL to embed (empty = Dockerfile default)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Build & push headless image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute lowercase image name
+        id: image
+        run: echo "name=$(echo '${{ env.REGISTRY }}/${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve GAMA zip override
+        id: gama
+        run: |
+          url='${{ inputs.GAMA_ZIP_URL }}'
+          if [ -n "$url" ]; then
+            echo "build_arg=GAMA_ZIP_URL=$url" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_arg=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.gama.outputs.build_arg }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
