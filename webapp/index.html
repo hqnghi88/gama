@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GAMA WebSocket Console + Map</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #17212b;
+    --panel-2: #1f2b38;
+    --border: #2b3a49;
+    --text: #dbe6f0;
+    --muted: #8296a8;
+    --accent: #3ba55d;
+    --accent-2: #4a9eff;
+    --danger: #e05252;
+    --warn: #e0a952;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.busy { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .status { color: var(--muted); font-size: 13px; }
+  .grow { flex: 1; }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding: 14px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .span2 { grid-column: 1 / -1; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel > h2 {
+    margin: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel .body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  input, textarea, select {
+    width: 100%;
+    background: #0c141c;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+  input[type=checkbox] { width: auto; }
+  textarea { resize: vertical; min-height: 150px; line-height: 1.45; }
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > button { flex: 0 0 auto; }
+  button {
+    background: var(--accent-2);
+    color: #06121f;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: var(--danger); color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btns button { flex: 0 0 auto; }
+  #log {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    height: 340px;
+    overflow: auto;
+    padding: 10px 12px;
+  }
+  .msg { padding: 3px 0; border-bottom: 1px solid #1b2836; white-space: pre-wrap; word-break: break-word; }
+  .msg .t { color: var(--muted); margin-right: 8px; }
+  .type { font-weight: 700; margin-right: 6px; }
+  .t-success { color: var(--accent); }
+  .t-error { color: var(--danger); }
+  .t-warn { color: var(--warn); }
+  .t-info { color: var(--accent-2); }
+  .kv { color: var(--muted); }
+  #expid { font-family: var(--mono); color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; }
+  .results { max-height: 120px; overflow: auto; font-family: var(--mono); font-size: 12px;
+             background: #0c141c; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+  .results div { padding: 2px 0; }
+  #map { height: 460px; width: 100%; background: #0c141c; }
+  .mapcontrols { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .mapcontrols > .fld { flex: 2 1 320px; }
+  .mapcontrols .fld { display: flex; flex-direction: column; }
+  .maplibregl-ctrl { filter: invert(0.9) hue-rotate(180deg); }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; }
+  .legend span::before { content: "●"; margin-right: 4px; }
+  .legend .pt::before { color: var(--danger); }
+  .legend .pg::before { color: var(--accent-2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>GAMA WebSocket Console + Map</h1>
+  <span class="dot" id="dot"></span>
+  <span class="status" id="status">disconnected</span>
+  <span class="grow"></span>
+  <span class="status">exp_id: <span id="expid">-</span></span>
+</header>
+
+<main>
+  <div class="panel span2">
+    <h2>Map (MapLibre) — live agents from GAMA</h2>
+    <div class="body" style="padding:0">
+      <div id="map"></div>
+      <div class="body" style="gap:8px">
+        <div class="mapcontrols">
+          <div class="fld">
+            <label for="mapexpr">Map expression (GAML, evaluated on the running experiment)</label>
+            <input id="mapexpr" spellcheck="false" />
+          </div>
+          <button id="mapupdate">Update map</button>
+          <button id="mapfit" class="secondary">Fit</button>
+        </div>
+        <div class="row" style="gap:14px; flex-wrap:wrap">
+          <label style="display:flex;gap:6px;align-items:center;margin:0;color:var(--text)">
+            <input type="checkbox" id="mapauto" checked /> auto-refresh
+          </label>
+          <div style="flex:0 0 auto; display:flex; align-items:center; gap:6px">
+            <span class="hint">every</span>
+            <input id="mapinterval" type="number" min="200" step="100" value="800" style="width:90px" />
+            <span class="hint">ms</span>
+          </div>
+          <span class="hint" id="mapstatus">no data yet</span>
+          <span class="grow"></span>
+          <span class="legend"><span class="pt">point</span><span class="pg">polygon</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Connection</h2>
+    <div class="body">
+      <div>
+        <label for="url">WebSocket URL</label>
+        <input id="url" value="wss://gama-latest.onrender.com" spellcheck="false" />
+      </div>
+      <div class="btns">
+        <button id="connect">Connect</button>
+        <button id="disconnect" class="secondary">Disconnect</button>
+      </div>
+      <p class="hint">Render URL uses <b>wss://</b>. For a local GAMA server use e.g. <b>ws://localhost:10000</b>.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Model</h2>
+    <div class="body">
+      <div>
+        <label for="path">Model path on server</label>
+        <input id="path" value="/data/workspace/gama_map.gaml" spellcheck="false" />
+      </div>
+      <div>
+        <label for="experiment">Experiment name</label>
+        <input id="experiment" value="gama_map" spellcheck="false" />
+      </div>
+      <div>
+        <label for="gaml">GAML source</label>
+        <textarea id="gaml" spellcheck="false"></textarea>
+      </div>
+      <div class="btns">
+        <button id="upload">Upload</button>
+        <button id="load">Load</button>
+        <button id="uploadload">Upload &amp; Load</button>
+      </div>
+      <p class="hint">Upload also writes a small GeoJSON area (Paris) to <b>/data/workspace/area.geojson</b>; the model uses it to set the world CRS.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Simulation</h2>
+    <div class="body">
+      <div class="btns">
+        <button id="play">Play</button>
+        <button id="pause" class="secondary">Pause</button>
+        <button id="stop" class="danger">Stop</button>
+        <button id="reload" class="secondary">Reload</button>
+      </div>
+      <div class="row">
+        <input id="steps" type="number" min="1" value="1" style="max-width:90px" />
+        <button id="step" class="secondary">Step</button>
+      </div>
+      <div>
+        <label for="expr">Evaluate GAML expression</label>
+        <div class="row">
+          <input id="expr" value="cycle" spellcheck="false" />
+          <button id="eval">Eval</button>
+        </div>
+      </div>
+      <div class="results" id="results"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Server messages</h2>
+    <div class="body" style="padding:0">
+      <div id="log"></div>
+      <div class="btns" style="padding:10px 12px">
+        <button id="clear" class="secondary">Clear</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const AREA_PATH = "/data/workspace/area.geojson";
+
+const DEFAULT_AREA_GEOJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [{
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "Polygon",
+      coordinates: [[
+        [2.22, 48.80], [2.45, 48.80], [2.45, 48.92], [2.22, 48.92], [2.22, 48.80]
+      ]]
+    }
+  }]
+});
+
+const DEFAULT_GAML = `model gama_map
+
+// The world CRS is taken from the GeoJSON file (uploaded to AREA_PATH).
+// Agents are placed inside the world and move with the 'moving' skill, so
+// to_geojson(..., "EPSG:4326") reprojects them correctly back to lon/lat.
+
+global {
+  file area_file <- geojson_file("${AREA_PATH}");
+  geometry shape <- envelope(area_file);
+  int nb_vehicles <- 120;
+  init {
+    create vehicle number: nb_vehicles {
+      location <- any_location_in(world);
+      speed <- rnd(30.0, 400.0);
+      agent_color <- rgb(rnd(40, 230), rnd(40, 230), rnd(40, 230));
+    }
+  }
+}
+
+species vehicle skills: [moving] {
+  rgb agent_color <- #blue;
+  reflex move {
+    do wander amplitude: 30.0;
+  }
+}
+
+experiment gama_map type: gui {
+}
+`;
+
+const DEFAULT_MAP_EXPR = 'to_geojson(vehicle, "EPSG:4326", ["speed", "agent_color"])';
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  dot: $("dot"), status: $("status"), expid: $("expid"),
+  url: $("url"), connect: $("connect"), disconnect: $("disconnect"),
+  path: $("path"), experiment: $("experiment"), gaml: $("gaml"),
+  upload: $("upload"), load: $("load"), uploadload: $("uploadload"),
+  play: $("play"), pause: $("pause"), stop: $("stop"), reload: $("reload"),
+  steps: $("steps"), step: $("step"), expr: $("expr"), eval: $("eval"),
+  results: $("results"), log: $("log"), clear: $("clear"),
+  mapexpr: $("mapexpr"), mapupdate: $("mapupdate"), mapfit: $("mapfit"),
+  mapauto: $("mapauto"), mapinterval: $("mapinterval"), mapstatus: $("mapstatus"),
+};
+
+let ws = null;
+let expId = null;
+let manualClose = false;
+let reconnectTimer = null;
+let reconnectDelay = 1500;
+let attempt = 0;
+let mapBusy = false;
+const pending = new Map(); // command type -> [ {resolve, reject} ]
+const RESPONSE_TYPES = new Set([
+  "CommandExecutedSuccessfully", "RuntimeError", "MalformedRequest",
+  "UnableToExecuteRequest", "GamaServerError"
+]);
+const ERROR_TYPES = new Set(["RuntimeError", "MalformedRequest", "UnableToExecuteRequest", "GamaServerError"]);
+
+els.gaml.value = DEFAULT_GAML;
+els.mapexpr.value = DEFAULT_MAP_EXPR;
+els.url.value = localStorage.getItem("gama.wsUrl") || els.url.value;
+
+/* ----------------------------- Map ----------------------------- */
+let map = null;
+let mapReady = false;
+let mapFitted = false;
+let lastGeoJSON = { type: "FeatureCollection", features: [] };
+
+function initMap() {
+  map = new maplibregl.Map({
+    container: "map",
+    style: "https://demotiles.maplibre.org/style.json",
+    center: [2.33, 48.86],
+    zoom: 10,
+  });
+  map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.on("load", () => {
+    map.addSource("gama", { type: "geojson", data: emptyFC() });
+    map.addLayer({
+      id: "gama-fill", type: "fill", source: "gama",
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-color": ["coalesce", ["get", "_gama_color"], "#4a9eff"], "fill-opacity": 0.35 },
+    });
+    map.addLayer({
+      id: "gama-line", type: "line", source: "gama",
+      filter: ["in", ["geometry-type"], ["literal", ["LineString", "Polygon", "MultiLineString"]]],
+      paint: { "line-color": ["coalesce", ["get", "_gama_color"], "#4a9eff"], "line-width": 1.5 },
+    });
+    map.addLayer({
+      id: "gama-circle", type: "circle", source: "gama",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": 5,
+        "circle-color": ["coalesce", ["get", "_gama_color"], "#e05252"],
+        "circle-stroke-color": "#ffffff", "circle-stroke-width": 1,
+      },
+    });
+    mapReady = true;
+  });
+  map.on("error", (e) => {
+    if (e && e.error && /demotiles|style/i.test(String(e.error.message || ""))) {
+      log("warn", "map", "basemap load issue: " + e.error.message);
+    }
+  });
+}
+
+function emptyFC() { return { type: "FeatureCollection", features: [] }; }
+
+function gamaColorToCss(c) {
+  if (!c) return null;
+  if (typeof c === "object" && typeof c.red === "number") {
+    return `rgba(${c.red},${c.green},${c.blue},${(c.alpha ?? 255) / 255})`;
+  }
+  if (typeof c === "string") {
+    const nums = c.match(/\d+/g);
+    if (nums && nums.length >= 3) {
+      const [r, g, b, a] = nums.map(Number);
+      return `rgba(${r},${g},${b},${a === undefined ? 1 : (a > 1 ? a / 255 : a)})`;
+    }
+  }
+  return null;
+}
+
+function applyGeoJSON(payload) {
+  let gj = payload;
+  if (typeof gj === "string") { try { gj = JSON.parse(gj); } catch { return false; } }
+  if (!gj || gj.type !== "FeatureCollection" || !Array.isArray(gj.features)) return false;
+
+  for (const f of gj.features) {
+    const p = f && f.properties;
+    if (p) {
+      const css = gamaColorToCss(p.agent_color) || gamaColorToCss(p.color);
+      if (css) p._gama_color = css;
+    }
+  }
+  if (mapReady) map.getSource("gama").setData(gj);
+  lastGeoJSON = gj;
+  els.mapstatus.textContent = gj.features.length + " feature(s) @ " + new Date().toLocaleTimeString();
+  if (!mapFitted && gj.features.length) { fitMap(gj); mapFitted = true; }
+  return true;
+}
+
+function fitMap(gj) {
+  const b = new maplibregl.LngLatBounds();
+  let n = 0;
+  const visit = (coords) => {
+    if (typeof coords[0] === "number") { b.extend([coords[0], coords[1]]); n++; return; }
+    coords.forEach(visit);
+  };
+  for (const f of gj.features || []) if (f.geometry && f.geometry.coordinates) visit(f.geometry.coordinates);
+  if (n) map.fitBounds(b, { padding: 40, maxZoom: 14, duration: 600 });
+}
+
+async function refreshMap() {
+  if (mapBusy || !expId || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const expr = els.mapexpr.value.trim();
+  if (!expr) return;
+  mapBusy = true;
+  try {
+    const msg = await sendCommand("expression", { exp_id: expId, expr }, { quiet: true });
+    if (msg && msg.content !== undefined) applyGeoJSON(msg.content);
+  } catch (e) {
+    log("error", "map", e.message);
+  } finally {
+    mapBusy = false;
+  }
+}
+
+/* ------------------------- Connectivity ------------------------- */
+function setConnected(on, text, busy) {
+  els.dot.classList.toggle("on", on && !busy);
+  els.dot.classList.toggle("busy", !!busy);
+  els.status.textContent = text;
+  els.connect.disabled = on;
+  els.disconnect.disabled = !on;
+}
+setConnected(false, "disconnected");
+
+function log(kind, type, payload) {
+  const line = document.createElement("div");
+  line.className = "msg";
+  const time = new Date().toLocaleTimeString();
+  const detail = payload === undefined ? "" :
+    (typeof payload === "string" ? payload : JSON.stringify(payload));
+  line.innerHTML = `<span class="t">${time}</span><span class="type t-${kind}">${type}</span><span class="kv"></span>`;
+  line.lastChild.textContent = detail;
+  els.log.appendChild(line);
+  while (els.log.childElementCount > 500) els.log.removeChild(els.log.firstChild);
+  els.log.scrollTop = els.log.scrollHeight;
+}
+
+function resultLine(text) {
+  const d = document.createElement("div");
+  d.textContent = text;
+  els.results.prepend(d);
+  while (els.results.childElementCount > 100) els.results.removeChild(els.results.lastChild);
+}
+
+function kindFor(type) {
+  if (ERROR_TYPES.has(type)) return "error";
+  if (type === "CommandExecutedSuccessfully" || type === "ConnectionSuccessful") return "success";
+  if (type === "SimulationError" || type === "SimulationStatusError") return "error";
+  if (type === "SimulationOutput" || type === "SimulationDebug") return "info";
+  return "warn";
+}
+
+function sendCommand(type, fields = {}, opts = {}) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("Not connected");
+  return new Promise((resolve, reject) => {
+    const queue = pending.get(type) || [];
+    queue.push({ resolve, reject });
+    pending.set(type, queue);
+    const payload = Object.assign({ type }, fields);
+    ws.send(JSON.stringify(payload));
+    if (!opts.quiet) log("warn", ">> " + type, payload);
+  });
+}
+
+function resolvePending(type, ok, value) {
+  const queue = pending.get(type);
+  if (!queue || !queue.length) return;
+  const job = queue.shift();
+  ok ? job.resolve(value) : job.reject(new Error(typeof value === "string" ? value : JSON.stringify(value)));
+}
+
+function connect() {
+  manualClose = false;
+  clearTimeout(reconnectTimer);
+  const url = els.url.value.trim();
+  localStorage.setItem("gama.wsUrl", url);
+  try { ws = new WebSocket(url); }
+  catch (e) { log("error", "client", String(e)); return; }
+  attempt++;
+  setConnected(false, attempt > 1 ? `connecting… (attempt ${attempt})` : "connecting…");
+
+  ws.onopen = () => { attempt = 0; reconnectDelay = 1500; setConnected(true, "connected"); };
+  ws.onclose = (e) => {
+    setConnected(false, manualClose ? "disconnected" : "reconnecting…");
+    pending.clear();
+    if (!manualClose) {
+      if (e.code === 1006 && attempt <= 2) {
+        log("warn", "close", "code=1006 — service waking up (Render cold start); retrying…");
+      } else {
+        log("warn", "close", `code=${e.code}${e.reason ? " reason=" + e.reason : ""}`);
+      }
+      scheduleReconnect();
+    }
+  };
+  ws.onerror = () => {};
+  ws.onmessage = (ev) => handleMessage(ev.data);
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  const delay = reconnectDelay;
+  reconnectTimer = setTimeout(connect, delay);
+  reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+}
+
+function handleMessage(raw) {
+  let msg;
+  try { msg = JSON.parse(raw); }
+  catch { log("warn", "raw", raw); return; }
+
+  const type = msg.type || "unknown";
+  if (type === "SimulationStatusInform" && (!msg.content || !msg.content.message)) return;
+  const cmdType = msg.command && msg.command.type;
+  const isMapResponse = cmdType === "expression" && msg.command.expr === els.mapexpr.value.trim();
+  if (!isMapResponse) log(kindFor(type), type, msg.content !== undefined ? msg.content : msg);
+
+  if (RESPONSE_TYPES.has(type) && msg.command && msg.command.type) {
+    const reqType = msg.command.type;
+    if (ERROR_TYPES.has(type)) resolvePending(reqType, false, msg.content);
+    else resolvePending(reqType, true, msg);
+  }
+
+  switch (type) {
+    case "CommandExecutedSuccessfully":
+      if (msg.command && msg.command.type === "load") {
+        expId = String(msg.content);
+        els.expid.textContent = expId;
+        resultLine("loaded experiment id = " + expId);
+      } else if (msg.command && msg.command.type === "expression") {
+        const isMapExpr = msg.command.expr === els.mapexpr.value.trim();
+        if (!isMapExpr) resultLine("expr \"" + (msg.command.expr || "") + "\" = " + JSON.stringify(msg.content));
+      }
+      break;
+    case "SimulationOutput":
+    case "SimulationStatusInform":
+      if (msg.content && msg.content.message) resultLine(msg.content.message);
+      break;
+    case "SimulationEnded":
+      resultLine("simulation ended");
+      break;
+  }
+}
+
+function requireExpId() {
+  if (!expId) { alert("Load an experiment first (Upload & Load)."); throw new Error("no exp_id"); }
+  return expId;
+}
+function withExp(fn) { try { fn(requireExpId()); } catch (e) {} }
+
+/* ------------------------------ Wiring ------------------------------ */
+els.connect.onclick = connect;
+els.disconnect.onclick = () => { manualClose = true; clearTimeout(reconnectTimer); if (ws) ws.close(); };
+
+function uploadSources() {
+  return sendCommand("upload", { file: AREA_PATH, content: DEFAULT_AREA_GEOJSON })
+    .then(() => sendCommand("upload", { file: els.path.value.trim(), content: els.gaml.value }));
+}
+
+els.upload.onclick = () => uploadSources()
+  .then(() => log("success", "client", "upload done")).catch((e) => log("error", "client", e.message));
+
+els.load.onclick = () => sendCommand("load", {
+  model: els.path.value.trim(), experiment: els.experiment.value.trim(),
+  console: true, status: false, dialog: false,
+}).catch((e) => log("error", "client", e.message));
+
+els.uploadload.onclick = async () => {
+  try {
+    await uploadSources();
+    mapFitted = false;
+    await sendCommand("load", {
+      model: els.path.value.trim(), experiment: els.experiment.value.trim(),
+      console: true, status: false, dialog: false,
+    });
+  } catch (e) { log("error", "client", e.message); }
+};
+
+els.play.onclick = () => withExp((id) => sendCommand("play", { exp_id: id }));
+els.pause.onclick = () => withExp((id) => sendCommand("pause", { exp_id: id }));
+els.stop.onclick = () => withExp((id) => sendCommand("stop", { exp_id: id }));
+els.reload.onclick = () => withExp((id) => sendCommand("reload", { exp_id: id }));
+els.step.onclick = () => withExp((id) => sendCommand("step", { exp_id: id, nb_step: Number(els.steps.value) || 1, sync: true }));
+els.eval.onclick = () => withExp((id) => sendCommand("expression", { exp_id: id, expr: els.expr.value }));
+els.mapupdate.onclick = () => { mapBusy = false; refreshMap(); };
+els.mapfit.onclick = () => { if (mapReady) fitMap(lastGeoJSON); };
+
+function mapLoop() {
+  if (els.mapauto.checked) refreshMap();
+  const ms = Math.max(200, Number(els.mapinterval.value) || 800);
+  setTimeout(mapLoop, ms);
+}
+setTimeout(mapLoop, 800);
+
+els.clear.onclick = () => { els.log.innerHTML = ""; };
+els.url.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
+
+initMap();
+</script>
+</body>
+</html>
